@@ -1,6 +1,6 @@
 # Serviços de Render (FFmpeg) e Legenda (Whisper) — Plano de Implementação
 
-> **Para quem for executar:** REQUIRED SUB-SKILL: use superpowers:subagent-driven-development (recomendado) ou superpowers:executing-plans pra rodar esse plano tarefa por tarefa. Passos usam checkbox (`- [ ]`) pra rastreamento.
+> **Para quem for executar:** REQUIRED SUB-SKILL: use superpowers:subagent-driven-development (recomendado) ou superpowers:executing-plans pra rodar esse plano tarefa por tarefa. Passos usam checkbox (`- [x]`) pra rastreamento.
 
 **Goal:** Construir e publicar na VPS (Coolify) os dois microserviços de infraestrutura que o pipeline n8n vai chamar via HTTP: `render-service` (compõe o vídeo final via FFmpeg, 2 formatos) e `whisper-service` (gera legenda com timestamp palavra-a-palavra via faster-whisper). Esses dois serviços são a base técnica antes de construir os workflows n8n (plano seguinte).
 
@@ -30,7 +30,7 @@
 **Files:**
 - Create: `.gitignore`
 
-- [ ] **Step 1: Criar `.gitignore`**
+- [x] **Step 1: Criar `.gitignore`**
 
 ```
 node_modules/
@@ -41,7 +41,7 @@ dist/
 *.log
 ```
 
-- [ ] **Step 2: Inicializar repo e criar remoto GitHub**
+- [x] **Step 2: Inicializar repo e criar remoto GitHub**
 
 Run:
 ```bash
@@ -63,7 +63,7 @@ Expected: repo criado em `https://github.com/felippemarques/postador-automatico`
 - Create: `render-service/src/server.js`
 - Test: `render-service/src/__tests__/server.test.js`
 
-- [ ] **Step 1: Criar `package.json`**
+- [x] **Step 1: Criar `package.json`**
 
 ```json
 {
@@ -83,7 +83,7 @@ Expected: repo criado em `https://github.com/felippemarques/postador-automatico`
 
 Run: `cd render-service && npm install`
 
-- [ ] **Step 2: Escrever teste que falha**
+- [x] **Step 2: Escrever teste que falha**
 
 ```js
 // render-service/src/__tests__/server.test.js
@@ -111,12 +111,12 @@ test('GET /health returns ok', async () => {
 });
 ```
 
-- [ ] **Step 3: Rodar teste, confirmar falha**
+- [x] **Step 3: Rodar teste, confirmar falha**
 
 Run: `cd render-service && npm test`
 Expected: FAIL — `Cannot find module '../server'`
 
-- [ ] **Step 4: Implementar `server.js` mínimo**
+- [x] **Step 4: Implementar `server.js` mínimo**
 
 ```js
 // render-service/src/server.js
@@ -144,12 +144,12 @@ if (require.main === module) {
 module.exports = { app, start };
 ```
 
-- [ ] **Step 5: Rodar teste, confirmar sucesso**
+- [x] **Step 5: Rodar teste, confirmar sucesso**
 
 Run: `cd render-service && npm test`
 Expected: PASS (1 teste)
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add render-service/package.json render-service/src/server.js render-service/src/__tests__/server.test.js
@@ -164,7 +164,7 @@ git commit -m "feat(render-service): add health endpoint"
 - Create: `render-service/src/compose.js`
 - Test: `render-service/src/__tests__/compose.test.js`
 
-- [ ] **Step 1: Escrever testes que falham**
+- [x] **Step 1: Escrever testes que falham**
 
 ```js
 // render-service/src/__tests__/compose.test.js
@@ -212,12 +212,12 @@ test('buildFfmpegArgs throws on unknown format', () => {
 });
 ```
 
-- [ ] **Step 2: Rodar, confirmar falha**
+- [x] **Step 2: Rodar, confirmar falha**
 
 Run: `cd render-service && npm test`
 Expected: FAIL — `Cannot find module '../compose'`
 
-- [ ] **Step 3: Implementar `compose.js`**
+- [x] **Step 3: Implementar `compose.js`**
 
 ```js
 // render-service/src/compose.js
@@ -295,12 +295,12 @@ function buildFfmpegArgs(job, formatKey, srtPath, outPath) {
 module.exports = { buildFfmpegArgs, buildSrt, writeSrt, srtTimestamp, FORMATS };
 ```
 
-- [ ] **Step 4: Rodar, confirmar sucesso**
+- [x] **Step 4: Rodar, confirmar sucesso**
 
 Run: `cd render-service && npm test`
 Expected: PASS (6 testes no total)
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add render-service/src/compose.js render-service/src/__tests__/compose.test.js
@@ -315,7 +315,7 @@ git commit -m "feat(render-service): add ffmpeg filter_complex builder and srt w
 - Create: `render-service/src/render.js`
 - Test: `render-service/src/__tests__/render.test.js`
 
-- [ ] **Step 1: Escrever testes que falham**
+- [x] **Step 1: Escrever testes que falham**
 
 ```js
 // render-service/src/__tests__/render.test.js
@@ -353,12 +353,12 @@ test('runFfmpeg rejects with stderr message on failure', async () => {
 });
 ```
 
-- [ ] **Step 2: Rodar, confirmar falha**
+- [x] **Step 2: Rodar, confirmar falha**
 
 Run: `cd render-service && npm test`
 Expected: FAIL — `Cannot find module '../render'`
 
-- [ ] **Step 3: Implementar `render.js`**
+- [x] **Step 3: Implementar `render.js`**
 
 ```js
 // render-service/src/render.js
@@ -391,12 +391,12 @@ async function renderJob(job, outDir, execFileImpl = execFile) {
 module.exports = { runFfmpeg, renderJob };
 ```
 
-- [ ] **Step 4: Rodar, confirmar sucesso**
+- [x] **Step 4: Rodar, confirmar sucesso**
 
 Run: `cd render-service && npm test`
 Expected: PASS (8 testes no total)
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add render-service/src/render.js render-service/src/__tests__/render.test.js
@@ -413,7 +413,7 @@ git commit -m "feat(render-service): orchestrate srt + dual-format ffmpeg render
 - Create: `render-service/Dockerfile`
 - Create: `render-service/.dockerignore`
 
-- [ ] **Step 1: Adicionar testes que falham em `server.test.js`**
+- [x] **Step 1: Adicionar testes que falham em `server.test.js`**
 
 ```js
 // adicionar ao final de render-service/src/__tests__/server.test.js
@@ -443,12 +443,12 @@ test('POST /render with auth but missing fields returns 400', async () => {
 });
 ```
 
-- [ ] **Step 2: Rodar, confirmar falha**
+- [x] **Step 2: Rodar, confirmar falha**
 
 Run: `cd render-service && npm test`
 Expected: FAIL — recebe 404/undefined em vez de 401/400 (rota `/render` ainda não existe)
 
-- [ ] **Step 3: Implementar rota `/render` completa em `server.js`**
+- [x] **Step 3: Implementar rota `/render` completa em `server.js`**
 
 ```js
 // render-service/src/server.js — substituir o arquivo inteiro
@@ -527,12 +527,12 @@ if (require.main === module) {
 module.exports = { app, start };
 ```
 
-- [ ] **Step 4: Rodar, confirmar sucesso**
+- [x] **Step 4: Rodar, confirmar sucesso**
 
 Run: `cd render-service && npm test`
 Expected: PASS (10 testes no total)
 
-- [ ] **Step 5: Criar `Dockerfile`**
+- [x] **Step 5: Criar `Dockerfile`**
 
 ```dockerfile
 FROM node:22-slim
@@ -547,14 +547,14 @@ EXPOSE 8080
 CMD ["node", "src/server.js"]
 ```
 
-- [ ] **Step 6: Criar `.dockerignore`**
+- [x] **Step 6: Criar `.dockerignore`**
 
 ```
 node_modules
 src/__tests__
 ```
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add render-service/src/server.js render-service/src/__tests__/server.test.js render-service/Dockerfile render-service/.dockerignore
@@ -572,7 +572,7 @@ git commit -m "feat(render-service): add /render endpoint with auth, download, a
 - Create: `whisper-service/src/server.py`
 - Test: `whisper-service/tests/test_server.py`
 
-- [ ] **Step 1: Criar `requirements.txt`**
+- [x] **Step 1: Criar `requirements.txt`**
 
 ```
 fastapi==0.115.0
@@ -580,7 +580,7 @@ uvicorn[standard]==0.30.6
 faster-whisper==1.0.3
 ```
 
-- [ ] **Step 2: Criar `requirements-dev.txt`**
+- [x] **Step 2: Criar `requirements-dev.txt`**
 
 ```
 -r requirements.txt
@@ -588,7 +588,7 @@ pytest==8.3.2
 httpx==0.27.2
 ```
 
-- [ ] **Step 3: Criar venv e instalar deps**
+- [x] **Step 3: Criar venv e instalar deps**
 
 Run:
 ```bash
@@ -599,9 +599,9 @@ python -m venv .venv
 
 Se `faster-whisper==1.0.3` falhar por falta de wheel `ctranslate2` na sua plataforma local (Windows/ARM), use pra desenvolvimento local apenas um mock — a instalação real acontece dentro do Docker (linux/arm64) na Tarefa 8, que é o ambiente que importa. Prossiga os testes com o pacote `faster_whisper` mockado (Step 2 da Tarefa 7 já faz isso).
 
-- [ ] **Step 4: Criar `src/__init__.py` vazio**
+- [x] **Step 4: Criar `src/__init__.py` vazio**
 
-- [ ] **Step 5: Escrever teste que falha**
+- [x] **Step 5: Escrever teste que falha**
 
 ```python
 # whisper-service/tests/test_server.py
@@ -634,12 +634,12 @@ def test_transcribe_requires_auth():
     assert res.status_code == 401
 ```
 
-- [ ] **Step 6: Rodar, confirmar falha**
+- [x] **Step 6: Rodar, confirmar falha**
 
 Run: `cd whisper-service && .venv/Scripts/pytest -v`
 Expected: FAIL — `ModuleNotFoundError: No module named 'src.server'`
 
-- [ ] **Step 7: Implementar `server.py`**
+- [x] **Step 7: Implementar `server.py`**
 
 ```python
 # whisper-service/src/server.py
@@ -693,12 +693,12 @@ def transcribe_audio(path, model):
     raise NotImplementedError
 ```
 
-- [ ] **Step 8: Rodar, confirmar sucesso**
+- [x] **Step 8: Rodar, confirmar sucesso**
 
 Run: `cd whisper-service && .venv/Scripts/pytest -v`
 Expected: PASS (2 testes)
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add whisper-service/requirements.txt whisper-service/requirements-dev.txt whisper-service/src/__init__.py whisper-service/src/server.py whisper-service/src/transcribe.py whisper-service/tests/test_server.py
@@ -713,7 +713,7 @@ git commit -m "feat(whisper-service): add health endpoint and bearer auth"
 - Modify: `whisper-service/src/transcribe.py`
 - Test: `whisper-service/tests/test_transcribe.py`
 
-- [ ] **Step 1: Escrever teste que falha**
+- [x] **Step 1: Escrever teste que falha**
 
 ```python
 # whisper-service/tests/test_transcribe.py
@@ -754,12 +754,12 @@ def test_transcribe_audio_returns_text_segments_and_words():
     ]
 ```
 
-- [ ] **Step 2: Rodar, confirmar falha**
+- [x] **Step 2: Rodar, confirmar falha**
 
 Run: `cd whisper-service && .venv/Scripts/pytest tests/test_transcribe.py -v`
 Expected: FAIL — `NotImplementedError`
 
-- [ ] **Step 3: Implementar `transcribe.py`**
+- [x] **Step 3: Implementar `transcribe.py`**
 
 ```python
 # whisper-service/src/transcribe.py
@@ -775,12 +775,12 @@ def transcribe_audio(path, model):
     return {"text": full_text, "segments": seg_list, "words": words}
 ```
 
-- [ ] **Step 4: Rodar todos os testes, confirmar sucesso**
+- [x] **Step 4: Rodar todos os testes, confirmar sucesso**
 
 Run: `cd whisper-service && .venv/Scripts/pytest -v`
 Expected: PASS (4 testes no total)
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add whisper-service/src/transcribe.py whisper-service/tests/test_transcribe.py
@@ -796,7 +796,7 @@ git commit -m "feat(whisper-service): implement word-level transcription mapping
 - Create: `whisper-service/Dockerfile`
 - Create: `whisper-service/.dockerignore`
 
-- [ ] **Step 1: Adicionar teste de sucesso do `/transcribe` com monkeypatch**
+- [x] **Step 1: Adicionar teste de sucesso do `/transcribe` com monkeypatch**
 
 ```python
 # adicionar ao final de whisper-service/tests/test_server.py
@@ -815,12 +815,12 @@ def test_transcribe_success(monkeypatch):
     assert res.json() == {"text": "oi", "segments": [], "words": []}
 ```
 
-- [ ] **Step 2: Rodar, confirmar sucesso**
+- [x] **Step 2: Rodar, confirmar sucesso**
 
 Run: `cd whisper-service && .venv/Scripts/pytest -v`
 Expected: PASS (5 testes no total) — `server.py` já chama `transcribe_audio` e `urlretrieve_audio` como atributos do módulo, então o monkeypatch já funciona sem mudar `server.py`
 
-- [ ] **Step 3: Criar `Dockerfile`**
+- [x] **Step 3: Criar `Dockerfile`**
 
 ```dockerfile
 FROM python:3.11-slim
@@ -836,7 +836,7 @@ CMD ["uvicorn", "src.server:app", "--host", "0.0.0.0", "--port", "8000"]
 
 Se o build falhar com erro de `ctranslate2` (wheel arm64 indisponível pra versão pinada), trocar a linha do `faster-whisper` em `requirements.txt` pra uma versão mais recente (`faster-whisper>=1.1.0`) que já publica wheel `manylinux_aarch64` — reconstruir a imagem depois da troca.
 
-- [ ] **Step 4: Criar `.dockerignore`**
+- [x] **Step 4: Criar `.dockerignore`**
 
 ```
 .venv
@@ -844,7 +844,7 @@ __pycache__
 tests
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add whisper-service/tests/test_server.py whisper-service/Dockerfile whisper-service/.dockerignore
