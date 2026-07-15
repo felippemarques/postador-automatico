@@ -12,16 +12,14 @@
 
 ## Contexto verificado nesta sessão (não re-verificar, já confirmado ao vivo)
 
-- Coolify em `http://137.131.180.11:8000`, token com permissão `deploy` confirmada ao vivo (`GET /api/v1/deploy?uuid=...` retorna 200 com `deployment_uuid`): `2|JCZkrGVAg5MDpVXdJp1TkKpHUSQbguRP0cdoCxOc62f852d4`. Usar este token em todos os comandos `curl` da Tarefa 9 (substitui o token antigo, somente leitura/criação, usado nas demais explorações desta sessão).
+- Coolify em `http://137.131.180.11:8000`, token com permissão `deploy` confirmada ao vivo (`GET /api/v1/deploy?uuid=...` retorna 200 com `deployment_uuid`). **Token não fica documentado aqui** (rotacionado após vazamento acidental em commit anterior — ver histórico do repo) — obter valor atual com o operador antes de rodar os comandos da Tarefa 9.
 - `project_uuid`: `l12q80mwj4jfbxs6tr3scdk1` (projeto "Staging")
 - `server_uuid`: `dgigt2wk487p1qhqt3fdziz1` (server "localhost", é a própria VPS)
 - `environment_uuid`: `a1ozrnus27wf28snh4hduyji` (environment "production")
 - Endpoint de criação testado ao vivo: `POST /api/v1/applications/public` — campos obrigatórios `project_uuid`, `server_uuid`, `environment_uuid`, `git_repository`, `git_branch`, `build_pack`. Campos opcionais confirmados: `name`, `base_directory`, `ports_exposes`, `instant_deploy`. Resposta: `{"uuid": "...", "domains": "http://<uuid>.137.131.180.11.sslip.io"}`.
 - Endpoint de env vars testado ao vivo: `PATCH /api/v1/applications/{uuid}/envs/bulk` body `{"data":[{"key":"K","value":"V"}]}` → 201.
 - `gh` CLI já autenticado localmente como `felippemarques`, `git`, `node v24`, `python 3.13` disponíveis na máquina local.
-- Tokens de auth já gerados pros dois serviços (usar exatamente estes valores no deploy, Tarefa 9):
-  - `RENDER_AUTH_TOKEN=de240004c1ffce91da54edc9431401cfa2db050946eee9fb`
-  - `WHISPER_AUTH_TOKEN=c2fdfe851b668a772926f2f49cfc83747de1ea2157760618`
+- Tokens de auth dos serviços: **não documentar valores reais aqui** — gerar/rotacionar e guardar apenas em local seguro (gestor de segredos, env do Coolify), nunca em arquivo versionado.
 
 ---
 
@@ -868,7 +866,7 @@ git push origin main
 
 Run:
 ```bash
-TOKEN="2|JCZkrGVAg5MDpVXdJp1TkKpHUSQbguRP0cdoCxOc62f852d4"
+TOKEN="<obter com o operador — não versionar>"
 BASE="http://137.131.180.11:8000"
 curl -s -X POST "$BASE/api/v1/applications/public" \
   -H "Authorization: Bearer $TOKEN" -H "Accept: application/json" -H "Content-Type: application/json" \
@@ -894,7 +892,7 @@ Run (substituir `RENDER_APP_UUID` pelo uuid do Step 2):
 ```bash
 curl -s -X PATCH "$BASE/api/v1/applications/RENDER_APP_UUID/envs/bulk" \
   -H "Authorization: Bearer $TOKEN" -H "Accept: application/json" -H "Content-Type: application/json" \
-  -d '{"data":[{"key":"RENDER_AUTH_TOKEN","value":"de240004c1ffce91da54edc9431401cfa2db050946eee9fb"}]}'
+  -d '{"data":[{"key":"RENDER_AUTH_TOKEN","value":"<gerar novo valor — não versionar>"}]}'
 ```
 
 Expected: `201`
@@ -932,7 +930,7 @@ Anote o `uuid` retornado como `WHISPER_APP_UUID`, então:
 ```bash
 curl -s -X PATCH "$BASE/api/v1/applications/WHISPER_APP_UUID/envs/bulk" \
   -H "Authorization: Bearer $TOKEN" -H "Accept: application/json" -H "Content-Type: application/json" \
-  -d '{"data":[{"key":"WHISPER_AUTH_TOKEN","value":"c2fdfe851b668a772926f2f49cfc83747de1ea2157760618"}]}'
+  -d '{"data":[{"key":"WHISPER_AUTH_TOKEN","value":"<gerar novo valor — não versionar>"}]}'
 curl -s "$BASE/api/v1/deploy?uuid=WHISPER_APP_UUID" -H "Authorization: Bearer $TOKEN" -H "Accept: application/json"
 ```
 
@@ -969,7 +967,7 @@ Expected: `{"status":"ok"}` e `{"status":"ok","model":"base"}`
 Run (usar 2 vídeos de amostra públicos + um mp3 de amostra público, ou arquivos hospedados em algum bucket seu):
 ```bash
 curl -s -X POST https://render-service-RENDER_APP_UUID.137.131.180.11.sslip.io/render \
-  -H "Authorization: Bearer de240004c1ffce91da54edc9431401cfa2db050946eee9fb" \
+  -H "Authorization: Bearer <RENDER_AUTH_TOKEN atual>" \
   -H "Content-Type: application/json" \
   -d '{
     "jobId":"smoke-test-1",
@@ -989,7 +987,7 @@ Nota: se as URLs de amostra acima estiverem fora do ar, substituir por qualquer 
 Run:
 ```bash
 curl -s -X POST https://whisper-service-WHISPER_APP_UUID.137.131.180.11.sslip.io/transcribe \
-  -H "Authorization: Bearer c2fdfe851b668a772926f2f49cfc83747de1ea2157760618" \
+  -H "Authorization: Bearer <WHISPER_AUTH_TOKEN atual>" \
   -H "Content-Type: application/json" \
   -d '{"audioUrl":"https://file-examples.com/storage/fe0b3d3e6c66e0c8f01b4b6/2017/11/file_example_MP3_700KB.mp3"}'
 ```
