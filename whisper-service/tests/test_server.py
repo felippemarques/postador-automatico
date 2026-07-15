@@ -25,3 +25,18 @@ def test_health_ok():
 def test_transcribe_requires_auth():
     res = client.post("/transcribe", json={"audioUrl": "http://x/audio.mp3"})
     assert res.status_code == 401
+
+
+import src.server as server_module
+
+
+def test_transcribe_success(monkeypatch):
+    monkeypatch.setattr(server_module, "transcribe_audio", lambda path, model: {"text": "oi", "segments": [], "words": []})
+    monkeypatch.setattr(server_module, "urlretrieve_audio", lambda url, dest: None)
+    res = client.post(
+        "/transcribe",
+        json={"audioUrl": "http://x/audio.mp3"},
+        headers={"authorization": "Bearer secret"},
+    )
+    assert res.status_code == 200
+    assert res.json() == {"text": "oi", "segments": [], "words": []}
