@@ -33,7 +33,16 @@ async function downloadToTmp(url, destDir) {
 
 app.post('/render', requireAuth, async (req, res) => {
   const { jobId, clips, voiceUrl, musicUrl, captions, musicVolume } = req.body || {};
-  if (!jobId || !Array.isArray(clips) || clips.length === 0 || !voiceUrl || !musicUrl || !Array.isArray(captions)) {
+  if (
+    !jobId ||
+    typeof jobId !== 'string' ||
+    !/^[a-zA-Z0-9_-]+$/.test(jobId) ||
+    !Array.isArray(clips) ||
+    clips.length === 0 ||
+    !voiceUrl ||
+    !musicUrl ||
+    !Array.isArray(captions)
+  ) {
     return res.status(400).json({ error: 'missing required fields' });
   }
   const jobDir = path.join(RENDERS_DIR, jobId);
@@ -54,7 +63,8 @@ app.post('/render', requireAuth, async (req, res) => {
     );
     res.json({ jobId, files: fileUrls });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error(`render failed for job ${jobId}:`, err);
+    res.status(500).json({ error: 'render failed' });
   }
 });
 
