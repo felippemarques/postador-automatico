@@ -855,14 +855,14 @@ git commit -m "feat(whisper-service): wire transcribe endpoint and add dockerfil
 
 **Files:** nenhum arquivo de código — chamadas de API.
 
-- [ ] **Step 1: Push do estado atual pro GitHub**
+- [x] **Step 1: Push do estado atual pro GitHub**
 
 Run:
 ```bash
 git push origin main
 ```
 
-- [ ] **Step 2: Criar app `render-service` no Coolify**
+- [x] **Step 2: Criar app `render-service` no Coolify**
 
 Run:
 ```bash
@@ -886,7 +886,7 @@ curl -s -X POST "$BASE/api/v1/applications/public" \
 
 Expected: `201`, resposta com `uuid` e `domains` (`http://<uuid>.137.131.180.11.sslip.io`). Anote o `uuid` retornado como `RENDER_APP_UUID`.
 
-- [ ] **Step 3: Configurar env vars do render-service**
+- [x] **Step 3: Configurar env vars do render-service**
 
 Run (substituir `RENDER_APP_UUID` pelo uuid do Step 2):
 ```bash
@@ -897,7 +897,7 @@ curl -s -X PATCH "$BASE/api/v1/applications/RENDER_APP_UUID/envs/bulk" \
 
 Expected: `201`
 
-- [ ] **Step 4: Deploy do render-service**
+- [x] **Step 4: Deploy do render-service**
 
 Run:
 ```bash
@@ -906,7 +906,7 @@ curl -s "$BASE/api/v1/deploy?uuid=RENDER_APP_UUID" -H "Authorization: Bearer $TO
 
 Expected: `200`, JSON com `deployments[0].deployment_uuid`. Acompanhar build no dashboard Coolify se quiser ver logs ao vivo.
 
-- [ ] **Step 5: Repetir Steps 2-4 pro whisper-service**
+- [x] **Step 5: Repetir Steps 2-4 pro whisper-service**
 
 Run:
 ```bash
@@ -936,7 +936,7 @@ curl -s "$BASE/api/v1/deploy?uuid=WHISPER_APP_UUID" -H "Authorization: Bearer $T
 
 Expected: `200` no deploy, mesmo formato de resposta do Step 4.
 
-- [ ] **Step 6: Confirmar os dois apps rodando**
+- [x] **Step 6: Confirmar os dois apps rodando**
 
 Run:
 ```bash
@@ -952,7 +952,7 @@ Expected: `"status":"running:healthy"` nos dois. Anote os dois `fqdn`/`domains` 
 
 **Files:** nenhum arquivo de código.
 
-- [ ] **Step 1: Testar `/health` público dos dois serviços**
+- [x] **Step 1: Testar `/health` público dos dois serviços**
 
 Run (trocar pelas URLs reais anotadas na Tarefa 9):
 ```bash
@@ -962,7 +962,7 @@ curl -s https://whisper-service-WHISPER_APP_UUID.137.131.180.11.sslip.io/health
 
 Expected: `{"status":"ok"}` e `{"status":"ok","model":"base"}`
 
-- [ ] **Step 2: Testar `/render` com clipes/áudio de amostra públicos**
+- [x] **Step 2: Testar `/render` com clipes/áudio de amostra públicos**
 
 Run (usar 2 vídeos de amostra públicos + um mp3 de amostra público, ou arquivos hospedados em algum bucket seu):
 ```bash
@@ -982,7 +982,7 @@ Expected: `200`, JSON com `files["16:9"]` e `files["9:16"]` apontando pra `/file
 
 Nota: se as URLs de amostra acima estiverem fora do ar, substituir por qualquer par de vídeo curto + 2 áudios mp3 públicos — o objetivo do passo é validar o pipeline completo (download → ffmpeg → arquivo servido), não os arquivos em si.
 
-- [ ] **Step 3: Testar `/transcribe` com áudio de amostra**
+- [x] **Step 3: Testar `/transcribe` com áudio de amostra**
 
 Run:
 ```bash
@@ -994,7 +994,7 @@ curl -s -X POST https://whisper-service-WHISPER_APP_UUID.137.131.180.11.sslip.io
 
 Expected: `200`, JSON com `text`, `segments`, `words` preenchidos com o conteúdo transcrito do áudio.
 
-- [ ] **Step 4: Documentar as URLs finais**
+- [x] **Step 4: Documentar as URLs finais**
 
 Adicionar ao final de `docs/superpowers/specs/2026-07-14-postador-automatico-design.md` uma seção "## Endpoints Publicados" com as duas URLs reais e confirmação de que ambos passaram no smoke test — isso vira input direto do próximo plano (workflows n8n).
 

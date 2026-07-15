@@ -96,3 +96,16 @@ Cada nicho é uma linha em `niches`. Trigger (Schedule Trigger, um por nicho ou 
 4. Stack mais barata em cada etapa (OpenRouter modelo barato, Edge-TTS, Pexels, Pixabay Music, Pollinations.ai).
 
 Depois do MVP validado: ligar `approval_mode = auto`, adicionar nichos, entrar fase 2 (TikTok/Instagram).
+
+## Endpoints Publicados
+
+Deploy feito via Coolify (plano `docs/superpowers/plans/2026-07-15-render-whisper-services.md`, Tarefa 9). Smoke test (Tarefa 10) validado em 2026-07-15: `/health` de ambos ok, `/render` produz os 2 formatos (16:9 e 9:16) a partir de clipes/áudio remotos, `/transcribe` retorna texto/segments/words a partir de áudio remoto.
+
+- **render-service**: `http://hdc4uggio012w03s44k1f4e3.137.131.180.11.sslip.io`
+  - `GET /health` → `{"status":"ok"}`
+  - `POST /render` (Bearer `RENDER_AUTH_TOKEN`) → `{"jobId", "files": {"16:9": "...", "9:16": "..."}}`
+- **whisper-service**: `http://g12r5wkmvc92no60fqx6tbhr.137.131.180.11.sslip.io`
+  - `GET /health` → `{"status":"ok","model":"base"}`
+  - `POST /transcribe` (Bearer `WHISPER_AUTH_TOKEN`) → `{"text", "segments", "words"}`
+
+Tokens de auth não ficam documentados aqui (rotacionados após vazamento em commit anterior do repo, já corrigido) — consultar env vars dos apps no painel Coolify. Essas URLs são o input direto do próximo plano (workflows n8n).
