@@ -20,3 +20,27 @@ test('GET /health returns ok', async () => {
   assert.deepEqual(body, { status: 'ok' });
   server.close();
 });
+
+test('POST /render without auth returns 401', async () => {
+  const server = await listen(app);
+  const { port } = server.address();
+  const res = await fetch(`http://127.0.0.1:${port}/render`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({}),
+  });
+  assert.equal(res.status, 401);
+  server.close();
+});
+
+test('POST /render with auth but missing fields returns 400', async () => {
+  const server = await listen(app);
+  const { port } = server.address();
+  const res = await fetch(`http://127.0.0.1:${port}/render`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', authorization: 'Bearer secret' },
+    body: JSON.stringify({}),
+  });
+  assert.equal(res.status, 400);
+  server.close();
+});
