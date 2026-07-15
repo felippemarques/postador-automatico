@@ -32,6 +32,9 @@ function writeSrt(captions, filePath) {
 function buildFfmpegArgs(job, formatKey, srtPath, outPath) {
   const format = FORMATS[formatKey];
   if (!format) throw new Error(`unknown format: ${formatKey}`);
+  if (!Array.isArray(job.clips) || job.clips.length === 0) {
+    throw new Error('at least one clip is required');
+  }
   const { width, height } = format;
   const clipCount = job.clips.length;
   const voiceIndex = clipCount;
@@ -47,7 +50,8 @@ function buildFfmpegArgs(job, formatKey, srtPath, outPath) {
     .join(';');
   const concatInputs = job.clips.map((_, i) => `[v${i}]`).join('');
   const concat = `${concatInputs}concat=n=${clipCount}:v=1:a=0[vcat]`;
-  const subtitles = `[vcat]subtitles=${srtPath.replace(/:/g, '\\:')}[vout]`;
+  const escapedSrtPath = srtPath.replace(/\\/g, '/').replace(/:/g, '\\:');
+  const subtitles = `[vcat]subtitles=${escapedSrtPath}[vout]`;
   const musicVolume = job.musicVolume ?? 0.25;
   const audioMix = `[${voiceIndex}:a]volume=1.0[voice];[${musicIndex}:a]volume=${musicVolume}[music];[voice][music]amix=inputs=2:duration=first:dropout_transition=2[aout]`;
 

@@ -40,3 +40,15 @@ test('buildFfmpegArgs builds 9:16 with correct dimensions', () => {
 test('buildFfmpegArgs throws on unknown format', () => {
   assert.throws(() => buildFfmpegArgs({ clips: [] }, '1:1', 'a.srt', 'a.mp4'), /unknown format/);
 });
+
+test('buildFfmpegArgs throws on empty clips array', () => {
+  assert.throws(() => buildFfmpegArgs({ clips: [] }, '16:9', 'a.srt', 'a.mp4'), /at least one clip/);
+});
+
+test('buildFfmpegArgs escapes Windows-style srt paths for the subtitles filter', () => {
+  const job = { clips: [{ path: 'a.mp4' }], voicePath: 'v.mp3', musicPath: 'm.mp3' };
+  const args = buildFfmpegArgs(job, '16:9', 'C:\\data\\renders\\job1.srt', 'out.mp4');
+  const filter = args[args.indexOf('-filter_complex') + 1];
+  assert.match(filter, /subtitles=C\\:\/data\/renders\/job1\.srt/);
+  assert.doesNotMatch(filter, /\\[a-zA-Z]/);
+});
