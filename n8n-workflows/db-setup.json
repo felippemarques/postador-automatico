@@ -1,0 +1,63 @@
+{
+  "name": "Postador - DB Setup (descartável)",
+  "nodes": [
+    {
+      "parameters": { "rule": { "interval": [{ "field": "days", "daysInterval": 365 }] } },
+      "id": "trigger-1",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "CREATE SCHEMA IF NOT EXISTS postador;\n\nCREATE TABLE IF NOT EXISTS postador.niches (\n  id SERIAL PRIMARY KEY,\n  name TEXT NOT NULL,\n  prompt_template TEXT NOT NULL,\n  clip_keywords TEXT[],\n  voice_id TEXT NOT NULL,\n  mascot_image_url TEXT,\n  approval_mode TEXT NOT NULL DEFAULT 'manual',\n  youtube_made_for_kids BOOLEAN NOT NULL DEFAULT true,\n  dry_run BOOLEAN NOT NULL DEFAULT false,\n  is_active BOOLEAN NOT NULL DEFAULT true,\n  created_at TIMESTAMPTZ NOT NULL DEFAULT now()\n);\n\nCREATE TABLE IF NOT EXISTS postador.topics_used (\n  id SERIAL PRIMARY KEY,\n  niche_id INTEGER NOT NULL REFERENCES postador.niches(id),\n  topic TEXT NOT NULL,\n  created_at TIMESTAMPTZ NOT NULL DEFAULT now()\n);\n\nCREATE TABLE IF NOT EXISTS postador.video_runs (\n  id SERIAL PRIMARY KEY,\n  niche_id INTEGER NOT NULL REFERENCES postador.niches(id),\n  status TEXT NOT NULL DEFAULT 'em_progresso',\n  current_step TEXT,\n  topic TEXT,\n  script_text TEXT,\n  voice_url TEXT,\n  captions_json JSONB,\n  assets_json JSONB,\n  music_url TEXT,\n  render_16x9_url TEXT,\n  render_9x16_url TEXT,\n  thumbnail_url TEXT,\n  youtube_video_id TEXT,\n  youtube_shorts_id TEXT,\n  error_message TEXT,\n  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),\n  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()\n);\n\nCREATE TABLE IF NOT EXISTS postador.costs (\n  id SERIAL PRIMARY KEY,\n  video_run_id INTEGER NOT NULL REFERENCES postador.video_runs(id),\n  step TEXT NOT NULL,\n  provider TEXT NOT NULL,\n  estimated_cost_usd NUMERIC(10,4) NOT NULL DEFAULT 0,\n  created_at TIMESTAMPTZ NOT NULL DEFAULT now()\n);"
+      },
+      "id": "pg-ddl",
+      "name": "Run DDL",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [460, 300],
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": { "id": "__PG_CRED_ID__", "name": "Postgres postador" }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO postador.niches (name, prompt_template, clip_keywords, voice_id, approval_mode, youtube_made_for_kids, dry_run, is_active)\nVALUES (\n  'Esquadrão da Gentileza',\n  'Você é o Capitão do Esquadrão da Gentileza, um herói animado e encorajador que ensina boas maneiras para crianças como se fossem superpoderes e missões. Invente você mesmo o tema de uma nova missão (nome curto, ex: Missão Guarda-Brinquedos, Operação Ouvir os Pais, O Superpoder do Por Favor) que ainda NÃO esteja nesta lista de temas já usados: {{used_topics}}. Gere um roteiro curto (cerca de 130-160 palavras, ~60-75 segundos falado) em português do Brasil sobre esse tema novo. Regras: nunca use tom de bronca (nada de não faça X), sempre celebre o poder da criança de deixar todo mundo mais feliz (herois fazem Y). Frases curtas, verbos de ação. Termine sempre celebrando a criança como herói. Responda SOMENTE em JSON, sem markdown: {\"topic\": \"nome curto da missão\", \"script\": \"texto completo do roteiro\"}.',\n  ARRAY['kids playing','family home','children sharing','siblings'],\n  'pt_BR-faber-medium',\n  'manual',\n  true,\n  true,\n  true\n)\nRETURNING id;"
+      },
+      "id": "pg-seed-niche",
+      "name": "Seed niche",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [680, 300],
+      "credentials": {
+        "postgres": { "id": "__PG_CRED_ID__", "name": "Postgres postador" }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO postador.video_runs (niche_id, status, current_step, topic) VALUES ($1, 'em_progresso', 'setup', 'Missão de Teste') RETURNING id;",
+        "additionalFields": { "queryParams": "={{$json.id}}" }
+      },
+      "id": "pg-seed-run",
+      "name": "Seed test video_run",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [900, 300],
+      "credentials": {
+        "postgres": { "id": "__PG_CRED_ID__", "name": "Postgres postador" }
+      }
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": { "main": [[{ "node": "Run DDL", "type": "main", "index": 0 }]] },
+    "Run DDL": { "main": [[{ "node": "Seed niche", "type": "main", "index": 0 }]] },
+    "Seed niche": { "main": [[{ "node": "Seed test video_run", "type": "main", "index": 0 }]] }
+  },
+  "settings": {}
+}
