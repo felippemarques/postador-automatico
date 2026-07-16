@@ -38,7 +38,7 @@ def test_synthesize_success(monkeypatch, tmp_path):
     assert res.status_code == 200
     body = res.json()
     assert body["url"].startswith("/files/")
-    assert body["url"].endswith(".mp3")
+    assert body["url"].endswith(".wav")
 
 
 def test_synthesize_missing_fields_returns_400():

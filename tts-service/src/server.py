@@ -32,9 +32,9 @@ async def synthesize(payload: dict, authorization: str = Header(None)):
     if not text or not voice:
         raise HTTPException(status_code=400, detail="missing required fields")
     job_id = uuid.uuid4().hex
-    out_path = AUDIO_DIR / f"{job_id}.mp3"
+    out_path = AUDIO_DIR / f"{job_id}.wav"
     await synthesize_speech(text, voice, str(out_path))
-    return {"jobId": job_id, "url": f"/files/{job_id}.mp3"}
+    return {"jobId": job_id, "url": f"/files/{job_id}.wav"}
 
 
 app.mount("/files", StaticFiles(directory=str(AUDIO_DIR)), name="files")
