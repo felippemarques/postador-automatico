@@ -107,5 +107,9 @@ Deploy feito via Coolify (plano `docs/superpowers/plans/2026-07-15-render-whispe
 - **whisper-service**: `http://g12r5wkmvc92no60fqx6tbhr.137.131.180.11.sslip.io`
   - `GET /health` → `{"status":"ok","model":"base"}`
   - `POST /transcribe` (Bearer `WHISPER_AUTH_TOKEN`) → `{"text", "segments", "words"}`
+- **tts-service**: `http://ha2pmlzqqxtr8c8szjt0mfz6.137.131.180.11.sslip.io`
+  - `GET /health` → `{"status":"ok"}`
+  - `POST /synthesize` (Bearer `TTS_AUTH_TOKEN`) → `{"jobId", "url"}` (arquivo `.wav`)
+  - Motor: **Piper TTS** rodando localmente no container (modelo `pt_BR-faber-medium`, baixado no build da imagem Docker, zero chamada de rede em runtime). Deploy feito via plano `docs/superpowers/plans/2026-07-15-tts-service.md`, depois migrado do Edge-TTS pro Piper via `docs/superpowers/plans/2026-07-15-tts-service-piper-migration.md` — Edge-TTS (`pt-BR-AntonioNeural`) foi abandonado porque o backend não-documentado da Microsoft (`speech.platform.bing.com`) bloqueia com 403 requisições vindas da faixa de IP desta VPS Oracle Cloud (confirmado em produção: o mesmo código funciona normalmente de outra rede — bloqueio anti-abuso do lado deles contra IPs de datacenter, não um bug nosso). Smoke test validado em 2026-07-15: `/synthesize` com texto real da persona retornou wav válido (PCM 16-bit, 22050Hz, mono), logs do container confirmam nenhuma chamada de rede externa durante a síntese.
 
 Tokens de auth não ficam documentados aqui (rotacionados após vazamento em commit anterior do repo, já corrigido) — consultar env vars dos apps no painel Coolify. Essas URLs são o input direto do próximo plano (workflows n8n).
