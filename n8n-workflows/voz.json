@@ -1,0 +1,88 @@
+{
+  "name": "Postador - Voz",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "trigger-1",
+      "name": "Execute Workflow Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT vr.script_text AS script_text, n.voice_id AS voice_id FROM postador.video_runs vr JOIN postador.niches n ON n.id = vr.niche_id WHERE vr.id = $1;",
+        "additionalFields": { "queryParams": "run_id" }
+      },
+      "id": "pg-read-script-voice",
+      "name": "Read script and voice",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [460, 300],
+      "credentials": { "postgres": { "id": "__PG_CRED_ID__", "name": "Postgres postador" } }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "return [{ json: { text: $json.script_text, voice: $json.voice_id } }];"
+      },
+      "id": "code-build-tts",
+      "name": "Build TTS request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://ha2pmlzqqxtr8c8szjt0mfz6.137.131.180.11.sslip.io/synthesize",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [{ "name": "Authorization", "value": "=Bearer {{$env.TTS_AUTH_TOKEN}}" }]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { text: $json.text, voice: $json.voice } }}",
+        "options": {}
+      },
+      "id": "http-tts",
+      "name": "Call tts-service",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const TTS_BASE = 'http://ha2pmlzqqxtr8c8szjt0mfz6.137.131.180.11.sslip.io';\nreturn [{ json: { voice_url: TTS_BASE + $json.url, run_id: $node[\"Execute Workflow Trigger\"].json.run_id } }];"
+      },
+      "id": "code-absolute-url",
+      "name": "Build absolute URL",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE postador.video_runs SET voice_url = $1, current_step = 'voz', updated_at = now() WHERE id = $2;",
+        "additionalFields": { "queryParams": "voice_url,run_id" }
+      },
+      "id": "pg-save-voice",
+      "name": "Save voice_url",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [1340, 300],
+      "credentials": { "postgres": { "id": "__PG_CRED_ID__", "name": "Postgres postador" } }
+    }
+  ],
+  "connections": {
+    "Execute Workflow Trigger": { "main": [[{ "node": "Read script and voice", "type": "main", "index": 0 }]] },
+    "Read script and voice": { "main": [[{ "node": "Build TTS request", "type": "main", "index": 0 }]] },
+    "Build TTS request": { "main": [[{ "node": "Call tts-service", "type": "main", "index": 0 }]] },
+    "Call tts-service": { "main": [[{ "node": "Build absolute URL", "type": "main", "index": 0 }]] },
+    "Build absolute URL": { "main": [[{ "node": "Save voice_url", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "availableInMCP": true }
+}
