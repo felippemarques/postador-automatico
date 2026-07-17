@@ -14,16 +14,19 @@ Documentação de decisão vive em `docs/superpowers/specs/` (specs macro, aprov
 4. `docs/superpowers/plans/2026-07-15-tts-service-piper-migration.md` — migração pra Piper TTS local (concluído, é a versão atual em produção).
 5. `docs/superpowers/specs/2026-07-15-n8n-workflows-design.md` — design dos workflows n8n em si (aprovado, **ainda sem plano de implementação** — próximo passo).
 
-## Status atual (2026-07-15)
+## Status atual (2026-07-17)
 
 **Concluído e publicado:**
-- `render-service` (Node/Express) e `whisper-service` (Python/FastAPI) — deployados, smoke-testados.
+- `render-service` (Node/Express) e `whisper-service` (Python/FastAPI) — deployados, smoke-testados. `render-service` ganhou endpoint `POST /thumbnail` (mascote + texto sobreposto via ffmpeg `drawtext`).
 - `tts-service` (Python/FastAPI) — deployado, smoke-testado. Motor é **Piper TTS local/offline**, não Edge-TTS (ver "Decisões e armadilhas" abaixo pro porquê).
+- Schema Postgres `postador` criado no banco (plano de fundações executado).
+- Sub-workflows n8n: **Roteiro, Voz, Legenda, Assets, Render** — implementados, registrados via API, testados isolados (ver `docs/superpowers/plans/n8n-instance.local.md` pros ids). Assets busca clipes Pexels (fallback Pixabay) + música fixa; Render chama `render-service` `/render` + `/thumbnail`.
 
 **Pendente:**
-- Plano de implementação dos workflows n8n propriamente ditos (Roteiro, Voz, Legenda, Assets, Render, Aprovação, Publish, Main Pipeline, Error Workflow, Cleanup) — o design já está aprovado em `docs/superpowers/specs/2026-07-15-n8n-workflows-design.md`, falta escrever o plano de tarefas e executar.
-- Schema Postgres `postador` (definido no spec, ainda não criado no banco).
-- Credenciais n8n (Postgres, OpenRouter, Pexels, Pixabay, Telegram, bearer tokens dos 3 microserviços) — ainda não criadas via API do n8n.
+- Aprovação, Publish, Main Pipeline, Error Workflow, Cleanup — planos já escritos (`docs/superpowers/plans/2026-07-16-*.md`), execução pendente.
+- Task 2 do plano Assets/Render: curar e subir 3-5 faixas de música fixas reais em `render-service`'s `/files/music/` (hoje as URLs no workflow Assets são placeholder, arquivo ainda não existe no volume).
+- **Investigar performance/estabilidade do `/render` na VPS ARM** — ver armadilha abaixo, achado em 2026-07-17.
+- Credenciais n8n adicionais (YouTube OAuth2 pro Publish) — pendente, ver plano de Aprovação+Publish.
 
 ## Serviços e comandos
 
@@ -70,6 +73,7 @@ Nota: a criação do diretório de áudio roda na importação do módulo `src/s
 - **Extração de status da API do Coolify**: a resposta de `GET /api/v1/applications/{uuid}` tem `"status":"..."` em múltiplos níveis (app, proxy Traefik do server, etc.) — usar `jq` com o path certo (`.status` no nível certo do objeto), não um grep cego pelo campo de status na resposta bruta inteira (já causou um falso alarme de "exited" que na verdade era o status do proxy).
 - **`piper-tts==1.2.0` (pin usado nos planos) não instala em todo ambiente** — depende de `piper-phonemize`, sem wheel para Windows/cp313. Usar `piper-tts>=1.2,<2` (resolve pra 1.4.2, que dropou essa dependência nativa).
 - **URLs do modelo Piper** (`https://huggingface.co/rhasspy/piper-voices/resolve/main/pt/pt_BR/faber/medium/pt_BR-faber-medium.onnx[.json]`) já confirmadas funcionando (curl real, 200, ~63MB) em 2026-07-15 — se o layout do repo `rhasspy/piper-voices` mudar no futuro, navegar `https://huggingface.co/rhasspy/piper-voices/tree/main/pt/pt_BR` pra achar o path atual.
+- **`render-service` `/render` pode ser muito lento (dezenas de minutos) e potencialmente travar/morrer na VPS ARM** — achado em 2026-07-17 testando o sub-workflow Render de ponta a ponta com clipes Pexels reais (8 clipes HD, ~40s de narração). Corrigido um bug real de correção (clipes concatenados inteiros, sem corte pra duração da voz — ver commit `fix(render-service): trim clips to voice duration before concat`, adiciona `ffprobe` + `-t` por clipe antes do `-i`), mas mesmo com o corte aplicado, um teste ao vivo subsequente levou **~58 minutos** só pro formato 16:9 e produziu um arquivo `.mp4` sem átomo `moov` válido (sinal de processo morto antes de finalizar, possivelmente OOM kill do kernel — `filter_complex` com 8 inputs de scale+crop+concat+subtitles+amix em 1080p pode ser pesado demais pra RAM/CPU da instância ARM free-tier). Não foi possível confirmar a causa exata: `GET /api/v1/applications/{uuid}/logs` do Coolify só devolve a última linha de log (sem histórico útil), e não há acesso SSH configurado nesta sessão pra checar `dmesg`/memória diretamente. **Não redescobrir do zero** — antes de investigar de novo, checar memória disponível da VPS, considerar downscale dos clipes de origem antes do filtro (reduzir resolução de entrada antes de decodificar em 1080p), processar clipes sequencialmente em vez de todos como inputs simultâneos do mesmo `filter_complex`, ou aumentar RAM/CPU da instância Oracle.
 
 ## Endpoints publicados (não-secretos)
 
