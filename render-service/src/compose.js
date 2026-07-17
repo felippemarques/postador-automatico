@@ -73,4 +73,18 @@ function buildFfmpegArgs(job, formatKey, srtPath, outPath) {
   ];
 }
 
-module.exports = { buildFfmpegArgs, buildSrt, writeSrt, srtTimestamp, FORMATS };
+function escapeDrawtext(text) {
+  return String(text)
+    .replace(/\\/g, '\\\\')
+    .replace(/:/g, '\\:')
+    .replace(/'/g, '’')
+    .replace(/%/g, '\\%');
+}
+
+function buildThumbnailArgs(mascotPath, text, outPath) {
+  const escaped = escapeDrawtext(text);
+  const drawtext = `drawtext=text='${escaped}':fontsize=64:fontcolor=white:borderw=4:bordercolor=black:x=(w-text_w)/2:y=h-160:box=1:boxcolor=black@0.5:boxborderw=20`;
+  return ['-i', mascotPath, '-vf', drawtext, '-frames:v', '1', '-q:v', '2', '-y', outPath];
+}
+
+module.exports = { buildFfmpegArgs, buildSrt, writeSrt, srtTimestamp, FORMATS, escapeDrawtext, buildThumbnailArgs };

@@ -97,3 +97,64 @@ test('POST /render returns a generic error and does not leak internal details on
     global.fetch = originalFetch;
   }
 });
+
+test('POST /thumbnail without auth returns 401', async () => {
+  const server = await listen(app);
+  const { port } = server.address();
+  const res = await fetch(`http://127.0.0.1:${port}/thumbnail`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({}),
+  });
+  assert.equal(res.status, 401);
+  server.close();
+});
+
+test('POST /thumbnail with auth but missing fields returns 400', async () => {
+  const server = await listen(app);
+  const { port } = server.address();
+  const res = await fetch(`http://127.0.0.1:${port}/thumbnail`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', authorization: 'Bearer secret' },
+    body: JSON.stringify({}),
+  });
+  assert.equal(res.status, 400);
+  server.close();
+});
+
+test('POST /thumbnail with path-traversal jobId returns 400', async () => {
+  const server = await listen(app);
+  const { port } = server.address();
+  const res = await fetch(`http://127.0.0.1:${port}/thumbnail`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', authorization: 'Bearer secret' },
+    body: JSON.stringify({ jobId: '../../etc/passwd', mascotImageUrl: 'http://example.com/m.png', text: 'x' }),
+  });
+  assert.equal(res.status, 400);
+  server.close();
+});
+
+test('POST /thumbnail returns a generic error and does not leak internal details on failure', async () => {
+  const originalFetch = global.fetch;
+  global.fetch = async (url, ...args) => {
+    if (typeof url === 'string' && url.includes('127.0.0.1')) {
+      return originalFetch(url, ...args);
+    }
+    throw new Error("ENOENT: no such file or directory, open '/data/renders/secret-internal-path'");
+  };
+  try {
+    const server = await listen(app);
+    const { port } = server.address();
+    const res = await fetch(`http://127.0.0.1:${port}/thumbnail`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: 'Bearer secret' },
+      body: JSON.stringify({ jobId: 'job-thumb-500', mascotImageUrl: 'http://example.com/m.png', text: 'Missão Teste' }),
+    });
+    const body = await res.json();
+    assert.equal(res.status, 500);
+    assert.deepEqual(body, { error: 'thumbnail failed' });
+    server.close();
+  } finally {
+    global.fetch = originalFetch;
+  }
+});

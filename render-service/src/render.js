@@ -1,6 +1,6 @@
 const path = require('node:path');
 const { execFile } = require('node:child_process');
-const { buildFfmpegArgs, writeSrt } = require('./compose');
+const { buildFfmpegArgs, writeSrt, buildThumbnailArgs } = require('./compose');
 
 function runFfmpeg(args, execFileImpl = execFile) {
   return new Promise((resolve, reject) => {
@@ -24,4 +24,11 @@ async function renderJob(job, outDir, execFileImpl = execFile) {
   return results;
 }
 
-module.exports = { runFfmpeg, renderJob };
+async function renderThumbnail(job, outDir, execFileImpl = execFile) {
+  const outPath = path.join(outDir, `${job.jobId}-thumb.jpg`);
+  const args = buildThumbnailArgs(job.mascotPath, job.text, outPath);
+  await runFfmpeg(args, execFileImpl);
+  return outPath;
+}
+
+module.exports = { runFfmpeg, renderJob, renderThumbnail };

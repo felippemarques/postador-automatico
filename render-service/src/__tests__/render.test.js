@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { renderJob, runFfmpeg } = require('../render');
+const { renderJob, runFfmpeg, renderThumbnail } = require('../render');
 
 test('renderJob writes srt and calls ffmpeg twice (16:9 and 9:16)', async () => {
   const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'render-'));
@@ -29,4 +29,16 @@ test('renderJob writes srt and calls ffmpeg twice (16:9 and 9:16)', async () => 
 test('runFfmpeg rejects with stderr message on failure', async () => {
   const fakeExecFile = (cmd, args, opts, cb) => cb(new Error('boom'), '', 'ffmpeg error output');
   await assert.rejects(() => runFfmpeg(['-i', 'x'], fakeExecFile), /ffmpeg error output/);
+});
+
+test('renderThumbnail calls ffmpeg once and returns the output path', async () => {
+  const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'thumb-'));
+  const calls = [];
+  const fakeExecFile = (cmd, args, opts, cb) => {
+    calls.push(args);
+    cb(null, '', '');
+  };
+  const outPath = await renderThumbnail({ jobId: 'job1', mascotPath: 'mascot.png', text: 'Missão Teste' }, outDir, fakeExecFile);
+  assert.equal(calls.length, 1);
+  assert.equal(outPath, path.join(outDir, 'job1-thumb.jpg'));
 });
