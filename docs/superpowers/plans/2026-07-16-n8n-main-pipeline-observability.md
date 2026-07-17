@@ -19,6 +19,7 @@
 - **Ativar workflow é `POST /api/v1/workflows/{id}/activate`** (endpoint dedicado, não `PATCH` no workflow em si) — já corrigido nos steps abaixo.
 - **`mcp__n8n__execute_workflow` só executa workflows com trigger `Schedule Trigger`, `Webhook Trigger`, `Form Trigger` ou `Chat Trigger`**, e exige `active: true` + `settings.availableInMCP: true`. O Main Pipeline já usa `Schedule Trigger` (nenhuma troca de trigger necessária pra testá-lo via MCP), mas precisa desses 2 ajustes de settings/ativação mesmo assim.
 - **Node Postgres sem `RETURNING` devolve 0 linhas de saída** — se tiver node depois na cadeia, precisa `"alwaysOutputData": true` no node. O Error Workflow tem um caso real disso (`Mark run as erro` → `Send error alert`), corrigido no JSON abaixo.
+- ⚠️ **`additionalFields.queryParams` do node Postgres NÃO é uma expression `{{ }}`** — é uma string literal separada por vírgula com **nomes de campo do item de entrada atual** (confirmado lendo `nodes-base/nodes/Postgres/v1/genericFunctions.ts`, e na prática executando o plano Roteiro/Voz/Legenda). Correto: `"errorMessage,runId"` (nomes puros), nunca `"={{...}}"` nem `$node[...]` — corrigido no JSON abaixo (`Mark run as erro` e `Create video_run`). HTTP Request/Code/IF/Telegram nodes **não** têm essa restrição (`$node[...]` funciona normalmente neles).
 
 - [ ] **Step 1: Env vars extras no app n8n (pra ele chamar a própria API)**
 
@@ -103,7 +104,7 @@ Expected: `200` nos dois. Aguardar `GET /api/v1/services/$N8N_SERVICE_UUID` volt
       "parameters": {
         "operation": "executeQuery",
         "query": "UPDATE postador.video_runs SET status = 'erro', error_message = $1, updated_at = now() WHERE id = $2;",
-        "additionalFields": { "queryParams": "={{$node[\"Extract run context\"].json.errorMessage}},{{$node[\"Extract run context\"].json.runId}}" }
+        "additionalFields": { "queryParams": "errorMessage,runId" }
       },
       "id": "pg-mark-erro",
       "name": "Mark run as erro",
@@ -169,7 +170,7 @@ Expected: `200` em cada chamada, com `settings.errorWorkflow` no corpo de respos
 
 - [ ] **Step 5: Testar isolado — forçar um erro proposital**
 
-Aplicar o "Procedimento de Teste Isolado via MCP" (ver plano de fundações/`n8n-instance.local.md`) no sub-workflow `Postador - Voz` com `WORKFLOW_ID=$VOZ_ID`, mas usando um `run_id` **inexistente** (ex. `99999`) no lugar do `run_id` de teste real — a query `SELECT script_text FROM video_runs WHERE id = 99999` não vai encontrar linha, e o Code node seguinte (`Build TTS request`) vai falhar tentando ler `.script_text` de `undefined`. **Não esquecer de restaurar o `Execute Workflow Trigger` original do Voz depois** (senão o Main Pipeline não consegue mais chamá-lo).
+Aplicar o "Procedimento de Teste Isolado via MCP" (ver `2026-07-16-n8n-roteiro-voz-legenda.md`, seção "Achados da execução") no sub-workflow `Postador - Voz` com `WORKFLOW_ID=$VOZ_ID`, mas usando um `run_id` **inexistente** (ex. `99999`) no lugar do `run_id` de teste real — a query `SELECT script_text FROM video_runs WHERE id = 99999` não vai encontrar linha, e o Code node seguinte (`Build TTS request`) vai falhar tentando ler `.script_text` de `undefined`. **Não esquecer de restaurar o `Execute Workflow Trigger` original do Voz depois** (senão o Main Pipeline não consegue mais chamá-lo).
 
 Expected: execução falha (esperado), e logo em seguida chega uma mensagem no Telegram com `⚠️ Erro no pipeline`, nome do workflow `Postador - Voz`, `Run ID: 99999`. Se a mensagem não chegar: checar se o workflow `Postador - Voz` está mesmo apontando `settings.errorWorkflow` pro id certo (Step 4) e se o Error Workflow está ativo (Step 3).
 
@@ -219,7 +220,7 @@ git commit -m "feat(n8n): add Error Workflow (fetches failed execution input via
       "parameters": {
         "operation": "executeQuery",
         "query": "INSERT INTO postador.video_runs (niche_id, status, current_step) VALUES ($1, 'em_progresso', 'iniciado') RETURNING id AS run_id, niche_id;",
-        "additionalFields": { "queryParams": "={{$json.niche_id}}" }
+        "additionalFields": { "queryParams": "niche_id" }
       },
       "id": "pg-create-run",
       "name": "Create video_run",
