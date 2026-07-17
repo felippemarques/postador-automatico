@@ -1,7 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { buildFfmpegArgs, srtTimestamp, buildSrt } = require('../compose');
-const { escapeDrawtext, buildThumbnailArgs } = require('../compose');
+const { buildFfmpegArgs, srtTimestamp, buildSrt, escapeDrawtext, buildThumbnailArgs } = require('../compose');
 
 test('srtTimestamp formats seconds as SRT timestamp', () => {
   assert.equal(srtTimestamp(0), '00:00:00,000');
@@ -58,6 +57,10 @@ test('escapeDrawtext escapes colon, backslash and replaces apostrophe', () => {
   assert.equal(escapeDrawtext(`It's 10:30\\done`), 'It’s 10\\:30\\\\done');
 });
 
+test('escapeDrawtext escapes percent signs', () => {
+  assert.equal(escapeDrawtext('100% done'), '100\\% done');
+});
+
 test('buildThumbnailArgs builds a single-frame ffmpeg overlay command', () => {
   const args = buildThumbnailArgs('mascot.png', 'Missão Super Ouvidos', 'out.jpg');
   assert.deepEqual(args.slice(0, 2), ['-i', 'mascot.png']);
@@ -69,5 +72,4 @@ test('buildThumbnailArgs builds a single-frame ffmpeg overlay command', () => {
   // orphaned), matching the existing `buildFfmpegArgs` convention in this file, so
   // the tail window is widened to include it.
   assert.deepEqual(args.slice(-6), ['-frames:v', '1', '-q:v', '2', '-y', 'out.jpg']);
-  assert.equal(args.at(-1) === 'out.jpg' || args.includes('out.jpg'), true);
 });

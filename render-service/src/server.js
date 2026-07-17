@@ -18,6 +18,18 @@ function requireAuth(req, res, next) {
   next();
 }
 
+// Validates jobId (alphanumeric/underscore/hyphen only, guards against path
+// traversal) and creates its render directory. Returns the jobDir path, or
+// null if jobId is missing/invalid so the caller can respond 400.
+function resolveJobDir(jobId) {
+  if (!jobId || typeof jobId !== 'string' || !/^[a-zA-Z0-9_-]+$/.test(jobId)) {
+    return null;
+  }
+  const jobDir = path.join(RENDERS_DIR, jobId);
+  fs.mkdirSync(jobDir, { recursive: true });
+  return jobDir;
+}
+
 app.get('/health', (req, res) => {
   res.json({ status: 'ok' });
 });
@@ -25,9 +37,6 @@ app.get('/health', (req, res) => {
 app.post('/render', requireAuth, async (req, res) => {
   const { jobId, clips, voiceUrl, musicUrl, captions, musicVolume } = req.body || {};
   if (
-    !jobId ||
-    typeof jobId !== 'string' ||
-    !/^[a-zA-Z0-9_-]+$/.test(jobId) ||
     !Array.isArray(clips) ||
     clips.length === 0 ||
     !voiceUrl ||
@@ -36,8 +45,10 @@ app.post('/render', requireAuth, async (req, res) => {
   ) {
     return res.status(400).json({ error: 'missing required fields' });
   }
-  const jobDir = path.join(RENDERS_DIR, jobId);
-  fs.mkdirSync(jobDir, { recursive: true });
+  const jobDir = resolveJobDir(jobId);
+  if (!jobDir) {
+    return res.status(400).json({ error: 'missing required fields' });
+  }
   try {
     const localClips = [];
     for (const clip of clips) {
@@ -61,18 +72,13 @@ app.post('/render', requireAuth, async (req, res) => {
 
 app.post('/thumbnail', requireAuth, async (req, res) => {
   const { jobId, mascotImageUrl, text } = req.body || {};
-  if (
-    !jobId ||
-    typeof jobId !== 'string' ||
-    !/^[a-zA-Z0-9_-]+$/.test(jobId) ||
-    !mascotImageUrl ||
-    !text ||
-    typeof text !== 'string'
-  ) {
+  if (!mascotImageUrl || !text || typeof text !== 'string') {
     return res.status(400).json({ error: 'missing required fields' });
   }
-  const jobDir = path.join(RENDERS_DIR, jobId);
-  fs.mkdirSync(jobDir, { recursive: true });
+  const jobDir = resolveJobDir(jobId);
+  if (!jobDir) {
+    return res.status(400).json({ error: 'missing required fields' });
+  }
   try {
     const mascotPath = await downloadToTmp(mascotImageUrl, jobDir);
     const outPath = await renderThumbnail({ jobId, mascotPath, text }, jobDir);
