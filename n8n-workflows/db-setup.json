@@ -42,7 +42,7 @@
       "parameters": {
         "operation": "executeQuery",
         "query": "INSERT INTO postador.video_runs (niche_id, status, current_step, topic) VALUES ($1, 'em_progresso', 'setup', 'Missão de Teste') RETURNING id;",
-        "additionalFields": { "queryParams": "={{$json.id}}" }
+        "additionalFields": { "queryParams": "id" }
       },
       "id": "pg-seed-run",
       "name": "Seed test video_run",

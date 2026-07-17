@@ -202,7 +202,7 @@ Expected: `200`, JSON com `"id"` da credencial criada — anotar como `$PG_CRED_
       "parameters": {
         "operation": "executeQuery",
         "query": "INSERT INTO postador.video_runs (niche_id, status, current_step, topic) VALUES ($1, 'em_progresso', 'setup', 'Missão de Teste') RETURNING id;",
-        "additionalFields": { "queryParams": "={{$json.id}}" }
+        "additionalFields": { "queryParams": "id" }
       },
       "id": "pg-seed-run",
       "name": "Seed test video_run",
@@ -223,7 +223,7 @@ Expected: `200`, JSON com `"id"` da credencial criada — anotar como `$PG_CRED_
 }
 ```
 
-Nota: usa `Schedule Trigger` (não `Manual Trigger`) porque `mcp__n8n__execute_workflow` só executa workflows com trigger `Schedule Trigger`/`Webhook Trigger`/`Form Trigger`/`Chat Trigger` — confirmado na prática, `Manual Trigger` é rejeitado. O intervalo de 365 dias é só pra ter uma config válida; nunca vai disparar sozinho de verdade porque o workflow vai ficar inativo depois de usado (Step 5). `Run DDL` tem `alwaysOutputData: true` porque DDL pura sem `RETURNING` devolve 0 linhas, o que travaria a cadeia sem essa flag. `Seed test video_run` usa `$1`+`queryParams` (não `{{ }}` direto na query) — confirmado que o node Postgres v1 não avalia expressions dentro do campo `query`, mesmo com prefixo `=`.
+Nota: usa `Schedule Trigger` (não `Manual Trigger`) porque `mcp__n8n__execute_workflow` só executa workflows com trigger `Schedule Trigger`/`Webhook Trigger`/`Form Trigger`/`Chat Trigger` — confirmado na prática, `Manual Trigger` é rejeitado. O intervalo de 365 dias é só pra ter uma config válida; nunca vai disparar sozinho de verdade porque o workflow vai ficar inativo depois de usado (Step 5). `Run DDL` tem `alwaysOutputData: true` porque DDL pura sem `RETURNING` devolve 0 linhas, o que travaria a cadeia sem essa flag. `Seed test video_run` usa `$1`+`queryParams` (não `{{ }}` direto na query) — confirmado que o node Postgres v1 não avalia expressions dentro do campo `query`, mesmo com prefixo `=`. ⚠️ **`queryParams` em si também não é expression** — é uma string literal separada por vírgula com nomes de campo do item de entrada (`item.json[nome]`), confirmado lendo o código-fonte e na execução real do plano Roteiro/Voz/Legenda. `"queryParams": "id"` (nome puro) é o correto — `"={{$json.id}}"` falharia com `"propertiesString.split is not a function"`.
 
 - [ ] **Step 3: Substituir o placeholder e registrar via API**
 
