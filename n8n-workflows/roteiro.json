@@ -1,0 +1,119 @@
+{
+  "name": "Postador - Roteiro",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "trigger-1",
+      "name": "Execute Workflow Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id AS niche_id, prompt_template, voice_id FROM postador.niches WHERE id = $1;",
+        "additionalFields": { "queryParams": "niche_id" }
+      },
+      "id": "pg-read-niche",
+      "name": "Read niche",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [460, 300],
+      "credentials": { "postgres": { "id": "__PG_CRED_ID__", "name": "Postgres postador" } }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT topic FROM postador.topics_used WHERE niche_id = $1 ORDER BY created_at DESC LIMIT 30;",
+        "additionalFields": { "queryParams": "niche_id" }
+      },
+      "id": "pg-read-topics",
+      "name": "Read used topics",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [680, 300],
+      "alwaysOutputData": true,
+      "credentials": { "postgres": { "id": "__PG_CRED_ID__", "name": "Postgres postador" } }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const niche = $node[\"Read niche\"].json;\nconst usedTopics = $input.all().map(item => item.json.topic).filter(Boolean);\nconst usedTopicsCsv = usedTopics.length ? usedTopics.join(', ') : 'nenhum ainda';\nconst prompt = niche.prompt_template.replace('{{used_topics}}', usedTopicsCsv);\nreturn [{ json: { prompt } }];"
+      },
+      "id": "code-build-prompt",
+      "name": "Build prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://openrouter.ai/api/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{$env.OPENROUTER_API_KEY}}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { model: 'deepseek/deepseek-chat', messages: [ { role: 'user', content: $json.prompt } ] } }}",
+        "options": {}
+      },
+      "id": "http-openrouter",
+      "name": "Call OpenRouter",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const raw = $json.choices[0].message.content;\nconst cleaned = raw.trim().replace(/^```json/i, '').replace(/^```/, '').replace(/```$/, '').trim();\nconst parsed = JSON.parse(cleaned);\nreturn [{ json: { topic: parsed.topic, script: parsed.script, run_id: $node[\"Execute Workflow Trigger\"].json.run_id, niche_id: $node[\"Execute Workflow Trigger\"].json.niche_id } }];"
+      },
+      "id": "code-parse-llm",
+      "name": "Parse LLM JSON",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1340, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE postador.video_runs SET script_text = $1, topic = $2, current_step = 'roteiro', updated_at = now() WHERE id = $3;",
+        "additionalFields": { "queryParams": "script,topic,run_id" }
+      },
+      "id": "pg-save-script",
+      "name": "Save script",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [1560, 220],
+      "credentials": { "postgres": { "id": "__PG_CRED_ID__", "name": "Postgres postador" } }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO postador.topics_used (niche_id, topic) VALUES ($1, $2);",
+        "additionalFields": { "queryParams": "niche_id,topic" }
+      },
+      "id": "pg-insert-topic",
+      "name": "Insert topics_used",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [1560, 400],
+      "credentials": { "postgres": { "id": "__PG_CRED_ID__", "name": "Postgres postador" } }
+    }
+  ],
+  "connections": {
+    "Execute Workflow Trigger": { "main": [[{ "node": "Read niche", "type": "main", "index": 0 }]] },
+    "Read niche": { "main": [[{ "node": "Read used topics", "type": "main", "index": 0 }]] },
+    "Read used topics": { "main": [[{ "node": "Build prompt", "type": "main", "index": 0 }]] },
+    "Build prompt": { "main": [[{ "node": "Call OpenRouter", "type": "main", "index": 0 }]] },
+    "Call OpenRouter": { "main": [[{ "node": "Parse LLM JSON", "type": "main", "index": 0 }]] },
+    "Parse LLM JSON": { "main": [[{ "node": "Save script", "type": "main", "index": 0 }, { "node": "Insert topics_used", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "availableInMCP": true }
+}
