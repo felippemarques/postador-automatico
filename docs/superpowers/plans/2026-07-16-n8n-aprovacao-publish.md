@@ -12,13 +12,13 @@
 
 **Exceção à convenção do plano de fundações:** Aprovação precisa de uma credencial `telegramApi` de verdade (não `$env` cru) — o mecanismo de aprovação-com-um-toque do node Telegram deriva um token secreto de validação do webhook a partir do `accessToken` da credencial (confirmado lendo `Telegram/hitl/webhook.ts`), então não dá pra contornar com header manual.
 
-## Achados da execução do plano de fundações (aplicar em todo registro/teste deste plano)
+## Achados da execução do plano de fundações e do plano Roteiro/Voz/Legenda (aplicar em todo registro/teste deste plano)
 
-- **`⚠️ TELEGRAM_CHAT_ID` verificar antes de começar**: no plano de fundações, o valor coletado (`@lekrgjeruitghubot`) parecia ser o username do próprio bot, não um chat_id de destino — confirmar/corrigir antes do Task 2 (senão `Send thumbnail preview`/`Send approval request` vão falhar ou mandar mensagem pro lugar errado).
+- **`⚠️ TELEGRAM_CHAT_ID`**: já corrigido em 2026-07-17 pra um chat_id numérico real (`1241187505`) — o valor inicial coletado era o username do próprio bot. Nada a fazer aqui, só não reverter.
 - **Atualizar workflow via API é `PUT /api/v1/workflows/{id}`, não `PATCH`** (`PATCH` retorna 405). `PUT` substitui o objeto inteiro — sempre reenviar `name`, `nodes`, `connections`, `settings` completos.
 - **Ativar workflow é `POST /api/v1/workflows/{id}/activate`** (endpoint dedicado, não `PATCH` no workflow em si).
 - **`mcp__n8n__execute_workflow` só executa workflows com trigger `Schedule Trigger`, `Webhook Trigger`, `Form Trigger` ou `Chat Trigger`** — `Execute Workflow Trigger` não está nessa lista, e precisa `active: true` + `settings.availableInMCP: true`. Cada workflow deste plano já nasce com `"settings": {"availableInMCP": true}`.
-- **Procedimento de Teste Isolado via MCP**: trocar temporariamente o `Execute Workflow Trigger` por `Schedule Trigger` + `Code` node hardcodando `{run_id, niche_id}` de teste, testar, restaurar depois.
+- **Procedimento de Teste Isolado via MCP**: trocar temporariamente o `Execute Workflow Trigger` por `Schedule Trigger` + `Code` node hardcodando `{run_id, niche_id}` de teste, testar, restaurar depois. ⚠️ **O Code node de substituição precisa manter o nome exato `"Execute Workflow Trigger"`** — qualquer node adiante que referencie `$node["Execute Workflow Trigger"]` quebra com `"Referenced node doesn't exist"` se o node de teste tiver outro nome.
 
 ```bash
 # $N8N_BASE, $N8N_API_KEY já setados. $WORKFLOW_ID = id do sub-workflow. $TEST_RUN_ID/$TEST_NICHE_ID de n8n-instance.local.md.
@@ -26,12 +26,10 @@ curl -s "$N8N_BASE/api/v1/workflows/$WORKFLOW_ID" -H "X-N8N-API-KEY: $N8N_API_KE
 
 jq --arg runId "$TEST_RUN_ID" --arg nicheId "$TEST_NICHE_ID" '
   .nodes = ([
-    {"parameters":{"rule":{"interval":[{"field":"days","daysInterval":365}]}},"id":"test-trigger","name":"Test Trigger","type":"n8n-nodes-base.scheduleTrigger","typeVersion":1.2,"position":[0,600]},
-    {"parameters":{"mode":"runOnceForAllItems","jsCode":("return [{ json: { run_id: " + $runId + ", niche_id: " + $nicheId + " } }];")},"id":"test-input","name":"Test Input","type":"n8n-nodes-base.code","typeVersion":2,"position":[120,600]}
+    {"parameters":{"rule":{"interval":[{"field":"days","daysInterval":365}]}},"id":"test-trigger","name":"Test Trigger Source","type":"n8n-nodes-base.scheduleTrigger","typeVersion":1.2,"position":[0,600]},
+    {"parameters":{"mode":"runOnceForAllItems","jsCode":("return [{ json: { run_id: " + $runId + ", niche_id: " + $nicheId + " } }];")},"id":"test-input","name":"Execute Workflow Trigger","type":"n8n-nodes-base.code","typeVersion":2,"position":[120,600]}
   ] + (.nodes | map(select(.name != "Execute Workflow Trigger")))) |
-  .connections["Test Trigger"] = {"main": [[{"node":"Test Input","type":"main","index":0}]]} |
-  .connections["Test Input"] = .connections["Execute Workflow Trigger"] |
-  del(.connections["Execute Workflow Trigger"]) |
+  .connections["Test Trigger Source"] = {"main": [[{"node":"Execute Workflow Trigger","type":"main","index":0}]]} |
   {name, nodes, connections, settings}
 ' /tmp/wf-live.json > /tmp/wf-test.json
 
@@ -44,7 +42,11 @@ Executar via MCP (`mcp__n8n__execute_workflow`, `workflowId: $WORKFLOW_ID`, sem 
 curl -s -X PUT "$N8N_BASE/api/v1/workflows/$WORKFLOW_ID" -H "X-N8N-API-KEY: $N8N_API_KEY" -H "Content-Type: application/json" --data-binary @/tmp/wf-live.json
 ```
 
-- **Node Postgres não avalia `{{ }}` no campo `query`**, mesmo com `=` — este plano já usa só `$1`+`additionalFields.queryParams`, não alterar.
+- ⚠️ **`additionalFields.queryParams` do node Postgres NÃO é uma expression `{{ }}`** — confirmado lendo `nodes-base/nodes/Postgres/v1/genericFunctions.ts`: é uma string literal separada por vírgula com **nomes de campo do item de entrada atual** (`item.json[nome]`). O plano original usava `"={{$json.niche_id}}"`/`"={{$node[...]...}}"` — **errado**, falha com `"propertiesString.split is not a function"` ou lê o campo errado. Correto: nome puro (ex. `"run_id"`), e **nunca** referenciando outro node — só o item imediatamente anterior. Consequências aplicadas nos JSONs abaixo:
+  - Onde o valor vem de 2 tabelas diferentes (`video_runs` + `niches`), 1 query com `JOIN` substitui os 2 reads separados.
+  - Onde o valor "atravessa" o node `Telegram`/`YouTube`/HTTP (que retornam um item novo, sem os campos antigos), um Code node logo antes da escrita Postgres remonta um item plano com exatamente os nomes citados em `queryParams`, puxando de `$node[...]` (Code node pode referenciar qualquer node livremente).
+  - A saída do node `Telegram` `sendAndWait` vem **aninhada** em `$json.data.approved` (não `$json.approved`) — outro motivo pra precisar de um Code node antes de gravar no Postgres.
+- **HTTP Request/Code/IF/YouTube nodes NÃO têm essa restrição** — `{{ }}` e `$node["..."]` funcionam normalmente neles. Só `additionalFields.queryParams` do Postgres é especial.
 
 ---
 
@@ -104,27 +106,14 @@ Se esse endpoint não listar credenciais existentes (a API pública do n8n geral
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT approval_mode FROM postador.niches WHERE id = $1;",
-        "additionalFields": { "queryParams": "={{$json.niche_id}}" }
+        "query": "SELECT vr.id AS run_id, vr.topic, vr.script_text, vr.thumbnail_url, vr.render_16x9_url, n.approval_mode FROM postador.video_runs vr JOIN postador.niches n ON n.id = vr.niche_id WHERE vr.id = $1;",
+        "additionalFields": { "queryParams": "run_id" }
       },
-      "id": "pg-read-niche",
-      "name": "Read niche approval config",
+      "id": "pg-read-run",
+      "name": "Read run and niche for approval",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 1,
       "position": [460, 300],
-      "credentials": { "postgres": { "id": "__PG_CRED_ID__", "name": "Postgres postador" } }
-    },
-    {
-      "parameters": {
-        "operation": "executeQuery",
-        "query": "SELECT topic, script_text, thumbnail_url, render_16x9_url FROM postador.video_runs WHERE id = $1;",
-        "additionalFields": { "queryParams": "={{$node[\"Execute Workflow Trigger\"].json.run_id}}" }
-      },
-      "id": "pg-read-run",
-      "name": "Read run for approval",
-      "type": "n8n-nodes-base.postgres",
-      "typeVersion": 1,
-      "position": [680, 300],
       "credentials": { "postgres": { "id": "__PG_CRED_ID__", "name": "Postgres postador" } }
     },
     {
@@ -134,7 +123,7 @@ Se esse endpoint não listar credenciais existentes (a API pública do n8n geral
           "conditions": [
             {
               "id": "cond-manual",
-              "leftValue": "={{$node[\"Read niche approval config\"].json.approval_mode}}",
+              "leftValue": "={{$json.approval_mode}}",
               "rightValue": "manual",
               "operator": { "type": "string", "operation": "equals" }
             }
@@ -147,7 +136,7 @@ Se esse endpoint não listar credenciais existentes (a API pública do n8n geral
       "name": "Is manual approval?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [900, 300]
+      "position": [680, 300]
     },
     {
       "parameters": {
@@ -155,14 +144,14 @@ Se esse endpoint não listar credenciais existentes (a API pública do n8n geral
         "operation": "sendPhoto",
         "chatId": "={{$env.TELEGRAM_CHAT_ID}}",
         "binaryData": false,
-        "file": "={{$node[\"Read run for approval\"].json.thumbnail_url}}",
-        "additionalFields": { "caption": "={{$node[\"Read run for approval\"].json.topic}}" }
+        "file": "={{$json.thumbnail_url}}",
+        "additionalFields": { "caption": "={{$json.topic}}" }
       },
       "id": "tg-send-photo",
       "name": "Send thumbnail preview",
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.2,
-      "position": [1120, 200],
+      "position": [900, 200],
       "credentials": { "telegramApi": { "id": "__TG_CRED_ID__", "name": "Telegram Postador" } }
     },
     {
@@ -170,8 +159,8 @@ Se esse endpoint não listar credenciais existentes (a API pública do n8n geral
         "resource": "message",
         "operation": "sendAndWait",
         "chatId": "={{$env.TELEGRAM_CHAT_ID}}",
-        "subject": "=Aprovação de vídeo — {{$node[\"Read run for approval\"].json.topic}}",
-        "message": "=Tema: {{$node[\"Read run for approval\"].json.topic}}\n\nTrecho do roteiro:\n{{$node[\"Read run for approval\"].json.script_text.slice(0,300)}}...\n\nVídeo (16:9): {{$node[\"Read run for approval\"].json.render_16x9_url}}",
+        "subject": "=Aprovação de vídeo — {{$node[\"Read run and niche for approval\"].json.topic}}",
+        "message": "=Tema: {{$node[\"Read run and niche for approval\"].json.topic}}\n\nTrecho do roteiro:\n{{$node[\"Read run and niche for approval\"].json.script_text.slice(0,300)}}...\n\nVídeo (16:9): {{$node[\"Read run and niche for approval\"].json.render_16x9_url}}",
         "responseType": "approval",
         "approvalOptions": {
           "values": { "approvalType": "double", "approveLabel": "Aprovar", "disapproveLabel": "Rejeitar" }
@@ -184,14 +173,25 @@ Se esse endpoint não listar credenciais existentes (a API pública do n8n geral
       "name": "Send approval request",
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.2,
-      "position": [1340, 200],
+      "position": [1120, 200],
       "credentials": { "telegramApi": { "id": "__TG_CRED_ID__", "name": "Telegram Postador" } }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "return [{ json: { approved: $json.data.approved, run_id: $node[\"Execute Workflow Trigger\"].json.run_id } }];"
+      },
+      "id": "code-flatten-decision",
+      "name": "Flatten decision",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1340, 200]
     },
     {
       "parameters": {
         "operation": "executeQuery",
         "query": "UPDATE postador.video_runs SET status = CASE WHEN $1::boolean THEN 'aprovado' ELSE 'rejeitado' END, current_step = 'aprovacao', updated_at = now() WHERE id = $2;",
-        "additionalFields": { "queryParams": "={{$json.data.approved}},{{$node[\"Execute Workflow Trigger\"].json.run_id}}" }
+        "additionalFields": { "queryParams": "approved,run_id" }
       },
       "id": "pg-update-manual",
       "name": "Save manual decision",
@@ -204,20 +204,19 @@ Se esse endpoint não listar credenciais existentes (a API pública do n8n geral
       "parameters": {
         "operation": "executeQuery",
         "query": "UPDATE postador.video_runs SET status = 'aprovado', current_step = 'aprovacao', updated_at = now() WHERE id = $1;",
-        "additionalFields": { "queryParams": "={{$node[\"Execute Workflow Trigger\"].json.run_id}}" }
+        "additionalFields": { "queryParams": "run_id" }
       },
       "id": "pg-update-auto",
       "name": "Save auto approval",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 1,
-      "position": [1120, 420],
+      "position": [900, 420],
       "credentials": { "postgres": { "id": "__PG_CRED_ID__", "name": "Postgres postador" } }
     }
   ],
   "connections": {
-    "Execute Workflow Trigger": { "main": [[{ "node": "Read niche approval config", "type": "main", "index": 0 }]] },
-    "Read niche approval config": { "main": [[{ "node": "Read run for approval", "type": "main", "index": 0 }]] },
-    "Read run for approval": { "main": [[{ "node": "Is manual approval?", "type": "main", "index": 0 }]] },
+    "Execute Workflow Trigger": { "main": [[{ "node": "Read run and niche for approval", "type": "main", "index": 0 }]] },
+    "Read run and niche for approval": { "main": [[{ "node": "Is manual approval?", "type": "main", "index": 0 }]] },
     "Is manual approval?": {
       "main": [
         [{ "node": "Send thumbnail preview", "type": "main", "index": 0 }],
@@ -225,11 +224,14 @@ Se esse endpoint não listar credenciais existentes (a API pública do n8n geral
       ]
     },
     "Send thumbnail preview": { "main": [[{ "node": "Send approval request", "type": "main", "index": 0 }]] },
-    "Send approval request": { "main": [[{ "node": "Save manual decision", "type": "main", "index": 0 }]] }
+    "Send approval request": { "main": [[{ "node": "Flatten decision", "type": "main", "index": 0 }]] },
+    "Flatten decision": { "main": [[{ "node": "Save manual decision", "type": "main", "index": 0 }]] }
   },
   "settings": { "availableInMCP": true }
 }
 ```
+
+Nota de design: `Read run and niche for approval` faz **1 query com `JOIN`** (video_runs + niches) em vez de 2 nodes separados — evita o problema de `queryParams` só enxergar campos do item atual. `Flatten decision` existe porque `Send approval request` devolve o resultado aninhado em `$json.data.approved` (não `$json.approved`), e porque `run_id` precisa ser reintroduzido no item (a query original não tinha por onde carregá-lo até aqui sem esse node).
 
 - [ ] **Step 2: Substituir placeholders e registrar via API**
 
@@ -238,11 +240,11 @@ Se esse endpoint não listar credenciais existentes (a API pública do n8n geral
 curl -s -X POST "$N8N_BASE/api/v1/workflows" -H "X-N8N-API-KEY: $N8N_API_KEY" -H "Content-Type: application/json" --data-binary @n8n-workflows/aprovacao.json.tmp
 ```
 
-Expected: `200` com `id` — anotar em `n8n-instance.local.md` como `$APROVACAO_ID`. **Ativar** (`POST /api/v1/workflows/$APROVACAO_ID/activate` — é `POST` num endpoint dedicado, não `PATCH` no workflow; `PATCH /api/v1/workflows/{id}` genérico retorna 405 nesta instância, confirmado na execução do plano de fundações). Ativação é necessária tanto pro teste isolado via MCP quanto pro webhook de retomada do `sendAndWait` funcionar de verdade.
+Expected: `200` com `id` — anotar em `n8n-instance.local.md` como `$APROVACAO_ID`. **Ativar** (`POST /api/v1/workflows/$APROVACAO_ID/activate`). Ativação é necessária tanto pro teste isolado via MCP quanto pro webhook de retomada do `sendAndWait` funcionar de verdade.
 
 - [ ] **Step 3: Testar isolado**
 
-Aplicar o "Procedimento de Teste Isolado via MCP" (ver `2026-07-16-n8n-foundations.md`/`n8n-instance.local.md` — trocar `Execute Workflow Trigger` por `Schedule Trigger` + `Code` node hardcodando `{run_id, niche_id}` de teste) com `WORKFLOW_ID=$APROVACAO_ID`, executar via MCP com o nicho de teste (já tem `approval_mode='manual'` do seed).
+Aplicar o "Procedimento de Teste Isolado via MCP" (seção de Achados acima) com `WORKFLOW_ID=$APROVACAO_ID`, executar via MCP com o nicho de teste (já tem `approval_mode='manual'` do seed).
 
 ⚠️ Nota de risco: o webhook de retomada do `sendAndWait` é criado dinamicamente por execução (diferente do webhook estático que falhou ao registrar no plano de fundações), mas a mesma topologia main/worker separada do Coolify pode afetá-lo também — se a execução não retomar depois de tocar no botão do Telegram, checar os logs do processo `n8n`/`n8n-worker` no Coolify antes de assumir que é bug de configuração do workflow.
 
@@ -250,7 +252,7 @@ A execução deve **pausar** no node `Send approval request` — verificar no Te
 
 Expected: a execução retoma automaticamente, `video_runs.status` vira `'aprovado'`. Rodar de novo com um novo `run_id` de teste (reaproveitar o mesmo run vai falhar a leitura de `thumbnail_url` se ele já tiver sido sobrescrito por outro teste — usar um `run_id` fresco se disponível) e tocar "Rejeitar" dessa vez, confirmar `status='rejeitado'`.
 
-Se as mensagens não chegarem: checar `TELEGRAM_BOT_TOKEN`/`TELEGRAM_CHAT_ID` no env do n8n (Task 4 do plano de fundações) e o `accessToken` da credencial `telegramApi` (Task 1 deste plano).
+Se as mensagens não chegarem: checar `TELEGRAM_BOT_TOKEN`/`TELEGRAM_CHAT_ID` no env do n8n e o `accessToken` da credencial `telegramApi` (Task 1 deste plano).
 
 - [ ] **Step 4: Commit**
 
@@ -285,27 +287,14 @@ git commit -m "feat(n8n): add Aprovação sub-workflow (Telegram native sendAndW
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT status, render_16x9_url, render_9x16_url, topic, script_text FROM postador.video_runs WHERE id = $1;",
-        "additionalFields": { "queryParams": "={{$json.run_id}}" }
+        "query": "SELECT vr.id AS run_id, vr.status, vr.render_16x9_url, vr.render_9x16_url, vr.topic, vr.script_text, n.youtube_made_for_kids, n.dry_run FROM postador.video_runs vr JOIN postador.niches n ON n.id = vr.niche_id WHERE vr.id = $1;",
+        "additionalFields": { "queryParams": "run_id" }
       },
       "id": "pg-read-run",
-      "name": "Read run for publish",
+      "name": "Read run and niche for publish",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 1,
       "position": [460, 300],
-      "credentials": { "postgres": { "id": "__PG_CRED_ID__", "name": "Postgres postador" } }
-    },
-    {
-      "parameters": {
-        "operation": "executeQuery",
-        "query": "SELECT youtube_made_for_kids, dry_run FROM postador.niches WHERE id = $1;",
-        "additionalFields": { "queryParams": "={{$node[\"Execute Workflow Trigger\"].json.niche_id}}" }
-      },
-      "id": "pg-read-niche",
-      "name": "Read niche for publish",
-      "type": "n8n-nodes-base.postgres",
-      "typeVersion": 1,
-      "position": [680, 300],
       "credentials": { "postgres": { "id": "__PG_CRED_ID__", "name": "Postgres postador" } }
     },
     {
@@ -315,7 +304,7 @@ git commit -m "feat(n8n): add Aprovação sub-workflow (Telegram native sendAndW
           "conditions": [
             {
               "id": "cond-approved",
-              "leftValue": "={{$node[\"Read run for publish\"].json.status}}",
+              "leftValue": "={{$json.status}}",
               "rightValue": "aprovado",
               "operator": { "type": "string", "operation": "equals" }
             }
@@ -328,19 +317,19 @@ git commit -m "feat(n8n): add Aprovação sub-workflow (Telegram native sendAndW
       "name": "Is approved?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [900, 300]
+      "position": [680, 300]
     },
     {
       "parameters": {
         "operation": "executeQuery",
         "query": "UPDATE postador.video_runs SET current_step = 'publish_skipped', updated_at = now() WHERE id = $1;",
-        "additionalFields": { "queryParams": "={{$node[\"Execute Workflow Trigger\"].json.run_id}}" }
+        "additionalFields": { "queryParams": "run_id" }
       },
       "id": "pg-skip",
       "name": "Mark publish skipped",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 1,
-      "position": [1120, 460],
+      "position": [900, 460],
       "credentials": { "postgres": { "id": "__PG_CRED_ID__", "name": "Postgres postador" } }
     },
     {
@@ -350,7 +339,7 @@ git commit -m "feat(n8n): add Aprovação sub-workflow (Telegram native sendAndW
           "conditions": [
             {
               "id": "cond-dry-run",
-              "leftValue": "={{$node[\"Read niche for publish\"].json.dry_run}}",
+              "leftValue": "={{$json.dry_run}}",
               "rightValue": true,
               "operator": { "type": "boolean", "operation": "equals" }
             }
@@ -363,45 +352,45 @@ git commit -m "feat(n8n): add Aprovação sub-workflow (Telegram native sendAndW
       "name": "Is dry run?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [1120, 220]
+      "position": [900, 220]
     },
     {
       "parameters": {
         "operation": "executeQuery",
         "query": "UPDATE postador.video_runs SET current_step = 'dry_run_stop', updated_at = now() WHERE id = $1;",
-        "additionalFields": { "queryParams": "={{$node[\"Execute Workflow Trigger\"].json.run_id}}" }
+        "additionalFields": { "queryParams": "run_id" }
       },
       "id": "pg-dry-stop",
       "name": "Mark dry-run stop",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 1,
-      "position": [1340, 140],
+      "position": [1120, 140],
       "credentials": { "postgres": { "id": "__PG_CRED_ID__", "name": "Postgres postador" } }
     },
     {
       "parameters": {
         "method": "GET",
-        "url": "={{$node[\"Read run for publish\"].json.render_16x9_url}}",
+        "url": "={{$node[\"Read run and niche for publish\"].json.render_16x9_url}}",
         "options": { "response": { "response": { "responseFormat": "file", "outputPropertyName": "data" } } }
       },
       "id": "http-download-16x9",
       "name": "Download render 16:9",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1340, 300]
+      "position": [1120, 300]
     },
     {
       "parameters": {
         "resource": "video",
         "operation": "upload",
-        "title": "={{$node[\"Read run for publish\"].json.topic}}",
+        "title": "={{$node[\"Read run and niche for publish\"].json.topic}}",
         "regionCode": "BR",
         "categoryId": "27",
         "binaryProperty": "data",
         "options": {
-          "description": "={{$node[\"Read run for publish\"].json.script_text}}",
+          "description": "={{$node[\"Read run and niche for publish\"].json.script_text}}",
           "privacyStatus": "private",
-          "selfDeclaredMadeForKids": "={{$node[\"Read niche for publish\"].json.youtube_made_for_kids}}",
+          "selfDeclaredMadeForKids": "={{$node[\"Read run and niche for publish\"].json.youtube_made_for_kids}}",
           "notifySubscribers": false
         }
       },
@@ -409,44 +398,44 @@ git commit -m "feat(n8n): add Aprovação sub-workflow (Telegram native sendAndW
       "name": "Upload 16:9 to YouTube",
       "type": "n8n-nodes-base.youTube",
       "typeVersion": 1,
-      "position": [1560, 300],
+      "position": [1340, 300],
       "credentials": { "youTubeOAuth2Api": { "id": "__YOUTUBE_CRED_ID__", "name": "__YOUTUBE_CRED_NAME__" } }
     },
     {
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "return [{ json: { videoId: $json.id } }];"
+        "jsCode": "return [{ json: { videoId16x9: $json.id } }];"
       },
       "id": "code-extract-16x9-id",
       "name": "Extract 16x9 video id",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1780, 300]
+      "position": [1560, 300]
     },
     {
       "parameters": {
         "method": "GET",
-        "url": "={{$node[\"Read run for publish\"].json.render_9x16_url}}",
+        "url": "={{$node[\"Read run and niche for publish\"].json.render_9x16_url}}",
         "options": { "response": { "response": { "responseFormat": "file", "outputPropertyName": "data" } } }
       },
       "id": "http-download-9x16",
       "name": "Download render 9:16",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [2000, 300]
+      "position": [1780, 300]
     },
     {
       "parameters": {
         "resource": "video",
         "operation": "upload",
-        "title": "={{$node[\"Read run for publish\"].json.topic}} #Shorts",
+        "title": "={{$node[\"Read run and niche for publish\"].json.topic}} #Shorts",
         "regionCode": "BR",
         "categoryId": "27",
         "binaryProperty": "data",
         "options": {
-          "description": "={{$node[\"Read run for publish\"].json.script_text}}",
+          "description": "={{$node[\"Read run and niche for publish\"].json.script_text}}",
           "privacyStatus": "private",
-          "selfDeclaredMadeForKids": "={{$node[\"Read niche for publish\"].json.youtube_made_for_kids}}",
+          "selfDeclaredMadeForKids": "={{$node[\"Read run and niche for publish\"].json.youtube_made_for_kids}}",
           "notifySubscribers": false
         }
       },
@@ -454,38 +443,37 @@ git commit -m "feat(n8n): add Aprovação sub-workflow (Telegram native sendAndW
       "name": "Upload 9:16 to YouTube",
       "type": "n8n-nodes-base.youTube",
       "typeVersion": 1,
-      "position": [2220, 300],
+      "position": [2000, 300],
       "credentials": { "youTubeOAuth2Api": { "id": "__YOUTUBE_CRED_ID__", "name": "__YOUTUBE_CRED_NAME__" } }
     },
     {
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "return [{ json: { videoId: $json.id } }];"
+        "jsCode": "return [{ json: { videoId16x9: $node[\"Extract 16x9 video id\"].json.videoId16x9, videoId9x16: $json.id, run_id: $node[\"Read run and niche for publish\"].json.run_id } }];"
       },
       "id": "code-extract-9x16-id",
       "name": "Extract 9x16 video id",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [2440, 300]
+      "position": [2220, 300]
     },
     {
       "parameters": {
         "operation": "executeQuery",
         "query": "UPDATE postador.video_runs SET youtube_video_id = $1, youtube_shorts_id = $2, status = 'publicado', current_step = 'publish', updated_at = now() WHERE id = $3;",
-        "additionalFields": { "queryParams": "={{$node[\"Extract 16x9 video id\"].json.videoId}},{{$node[\"Extract 9x16 video id\"].json.videoId}},{{$node[\"Execute Workflow Trigger\"].json.run_id}}" }
+        "additionalFields": { "queryParams": "videoId16x9,videoId9x16,run_id" }
       },
       "id": "pg-save-publish",
       "name": "Save publish results",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 1,
-      "position": [2660, 300],
+      "position": [2440, 300],
       "credentials": { "postgres": { "id": "__PG_CRED_ID__", "name": "Postgres postador" } }
     }
   ],
   "connections": {
-    "Execute Workflow Trigger": { "main": [[{ "node": "Read run for publish", "type": "main", "index": 0 }]] },
-    "Read run for publish": { "main": [[{ "node": "Read niche for publish", "type": "main", "index": 0 }]] },
-    "Read niche for publish": { "main": [[{ "node": "Is approved?", "type": "main", "index": 0 }]] },
+    "Execute Workflow Trigger": { "main": [[{ "node": "Read run and niche for publish", "type": "main", "index": 0 }]] },
+    "Read run and niche for publish": { "main": [[{ "node": "Is approved?", "type": "main", "index": 0 }]] },
     "Is approved?": {
       "main": [
         [{ "node": "Is dry run?", "type": "main", "index": 0 }],
@@ -508,6 +496,8 @@ git commit -m "feat(n8n): add Aprovação sub-workflow (Telegram native sendAndW
   "settings": { "availableInMCP": true }
 }
 ```
+
+Nota de design: `Read run and niche for publish` faz **1 query com `JOIN`** (video_runs + niches) — todo IF/HTTP/YouTube node adiante referencia esse node diretamente por `$node[...]` (permitido, só `queryParams` de Postgres não permite). `Extract 9x16 video id` é o único ponto que precisa remontar um item plano (`videoId16x9` + `videoId9x16` + `run_id`) pra alimentar `queryParams` do `Save publish results`.
 
 - [ ] **Step 2: Substituir placeholders e registrar via API**
 
@@ -535,7 +525,7 @@ Expected: caminho `Is dry run?` → TRUE → `Mark dry-run stop`, `current_step`
 UPDATE postador.niches SET dry_run = false WHERE id = <niche_id de teste>;
 ```
 
-Rodar de novo o mesmo `run_id`/`niche_id`. Expected: os 2 uploads acontecem, `youtube_video_id`/`youtube_shorts_id` preenchidos, `status='publicado'`. Como `privacyStatus` está `private`, o vídeo **não fica público** — abrir `https://studio.youtube.com` logado na conta certa pra conferir os 2 uploads na aba de vídeos privados. Trocar `privacyStatus` pra `public`/`unlisted` no JSON (e re-registrar via `PATCH /api/v1/workflows/{id}`) só quando estiver pronto pra publicar de verdade.
+Rodar de novo o mesmo `run_id`/`niche_id`. Expected: os 2 uploads acontecem, `youtube_video_id`/`youtube_shorts_id` preenchidos, `status='publicado'`. Como `privacyStatus` está `private`, o vídeo **não fica público** — abrir `https://studio.youtube.com` logado na conta certa pra conferir os 2 uploads na aba de vídeos privados. Trocar `privacyStatus` pra `public`/`unlisted` no JSON (e re-registrar via `GET`+`PUT`, não `PATCH`) só quando estiver pronto pra publicar de verdade.
 
 Depois do teste, rodar `UPDATE postador.niches SET dry_run = true WHERE id = <niche_id de teste>;` de novo pra não deixar o nicho de teste publicando de verdade por acidente em execuções futuras.
 
@@ -552,6 +542,6 @@ git commit -m "feat(n8n): add Publish sub-workflow (YouTube upload 16:9 + Shorts
 
 - **Cobertura**: itens 6-7 da seção "Arquitetura de Workflows" do spec (Aprovação, Publish), incluindo os 2 modos de aprovação (`manual`/`auto`) e o gate `dry_run` antes de qualquer chamada real ao YouTube. ✅
 - **Sem placeholders de lógica**: todo Code/IF/query é literal e completo. Únicos placeholders são segredo/instância (`__PG_CRED_ID__`, `__TG_CRED_ID__`, `__YOUTUBE_CRED_ID__`/`__YOUTUBE_CRED_NAME__`). ✅
-- **Risco verificado, não adivinhado**: os 2 pontos de maior incerteza do pipeline inteiro (schema exato do node YouTube, mecanismo de aprovação via Telegram) foram checados lendo o **código-fonte oficial do n8n no GitHub** nesta sessão (`VideoDescription.ts`, `Telegram.node.ts`, `hitl/webhook.ts`, `sendAndWait/utils.ts`), não estimados de memória — reduz drasticamente o risco de retrabalho na hora de rodar de verdade. ✅
+- **Risco verificado, não adivinhado**: os 2 pontos de maior incerteza do pipeline inteiro (schema exato do node YouTube, mecanismo de aprovação via Telegram) foram checados lendo o **código-fonte oficial do n8n no GitHub** nesta sessão (`VideoDescription.ts`, `Telegram.node.ts`, `hitl/webhook.ts`, `sendAndWait/utils.ts`), não estimados de memória. O bug de `queryParams` (encontrado executando o plano Roteiro/Voz/Legenda) também foi corrigido aqui **antes** da primeira execução real deste plano, não depois. ✅
 - **Segurança**: `privacyStatus: 'private'` como default deliberado — publicar publicamente é ação externa difícil de desfazer, fica como troca manual e consciente (documentada no Step 4), não um default que expõe conteúdo sem confirmação explícita. ✅
-- **Consistência**: `run_id`/`niche_id` sempre via `$node["Execute Workflow Trigger"]`; nomes de coluna (`status`, `current_step`, `youtube_video_id`, `youtube_shorts_id`) batem com o schema do plano de fundações. ✅
+- **Consistência**: `run_id` sempre disponível via a query `JOIN` inicial de cada workflow (coluna `vr.id AS run_id`), carregado adiante por Code nodes quando uma chamada HTTP/Telegram/YouTube "quebra" a cadeia de campos; `queryParams` de todo node Postgres usa só nomes de campo do item imediatamente anterior. Nomes de coluna (`status`, `current_step`, `youtube_video_id`, `youtube_shorts_id`) batem com o schema do plano de fundações. ✅
