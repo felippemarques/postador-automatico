@@ -53,6 +53,53 @@ test('buildFfmpegArgs escapes Windows-style srt paths for the subtitles filter',
   assert.doesNotMatch(filter, /\\[a-zA-Z]/);
 });
 
+test('buildFfmpegArgs trims each clip input with -t sized to voiceDurationSec / clipCount when present', () => {
+  const job = {
+    clips: Array.from({ length: 8 }, (_, i) => ({ path: `clip${i}.mp4` })),
+    voicePath: 'voice.mp3',
+    musicPath: 'music.mp3',
+    voiceDurationSec: 40,
+  };
+  const args = buildFfmpegArgs(job, '16:9', 'out.srt', 'out.mp4');
+  job.clips.forEach((clip) => {
+    const iIndex = args.indexOf(clip.path) - 1;
+    assert.equal(args[iIndex], '-i');
+    assert.equal(args[iIndex - 2], '-t');
+    assert.equal(args[iIndex - 1], '5');
+  });
+  // voice/music inputs must NOT be preceded by -t
+  const voiceIIndex = args.indexOf('voice.mp3') - 1;
+  assert.equal(args[voiceIIndex], '-i');
+  assert.notEqual(args[voiceIIndex - 2], '-t');
+  const musicIIndex = args.indexOf('music.mp3') - 1;
+  assert.equal(args[musicIIndex], '-i');
+  assert.notEqual(args[musicIIndex - 2], '-t');
+});
+
+test('buildFfmpegArgs does not add -t before clip inputs when voiceDurationSec is absent (pre-fix behavior preserved)', () => {
+  const job = {
+    clips: [{ path: 'a.mp4' }, { path: 'b.mp4' }],
+    voicePath: 'voice.mp3',
+    musicPath: 'music.mp3',
+  };
+  const args = buildFfmpegArgs(job, '16:9', 'out.srt', 'out.mp4');
+  assert.deepEqual(args.slice(0, 6), ['-i', 'a.mp4', '-i', 'b.mp4', '-i', 'voice.mp3']);
+  assert.ok(!args.includes('-t'));
+});
+
+test('buildFfmpegArgs does not add -t when voiceDurationSec is non-finite (0, negative, NaN, Infinity)', () => {
+  for (const bad of [0, -5, NaN, Infinity]) {
+    const job = {
+      clips: [{ path: 'a.mp4' }],
+      voicePath: 'voice.mp3',
+      musicPath: 'music.mp3',
+      voiceDurationSec: bad,
+    };
+    const args = buildFfmpegArgs(job, '16:9', 'out.srt', 'out.mp4');
+    assert.ok(!args.includes('-t'), `expected no -t for voiceDurationSec=${bad}`);
+  }
+});
+
 test('escapeDrawtext escapes colon, backslash and replaces apostrophe', () => {
   assert.equal(escapeDrawtext(`It's 10:30\\done`), 'It’s 10\\:30\\\\done');
 });

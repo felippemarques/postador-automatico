@@ -40,8 +40,19 @@ function buildFfmpegArgs(job, formatKey, srtPath, outPath) {
   const voiceIndex = clipCount;
   const musicIndex = clipCount + 1;
 
+  // Trim each clip to roughly voiceDurationSec / clipCount before concat so the
+  // concatenated video doesn't run far longer than the narration (and ffmpeg
+  // doesn't decode more of each source clip than it needs). Only applied when
+  // a usable (finite, positive) duration is available; otherwise falls back to
+  // the original untrimmed behavior.
+  const perClipDurationSec = job.voiceDurationSec / clipCount;
+  const canTrim = Number.isFinite(perClipDurationSec) && perClipDurationSec > 0;
+
   const inputs = [];
-  job.clips.forEach((clip) => inputs.push('-i', clip.path));
+  job.clips.forEach((clip) => {
+    if (canTrim) inputs.push('-t', String(perClipDurationSec));
+    inputs.push('-i', clip.path);
+  });
   inputs.push('-i', job.voicePath);
   inputs.push('-i', job.musicPath);
 

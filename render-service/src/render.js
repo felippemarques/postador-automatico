@@ -11,9 +11,22 @@ function runFfmpeg(args, execFileImpl = execFile) {
   });
 }
 
+// Probes a media file's duration (in seconds) via ffprobe, ships alongside ffmpeg
+// in the same container/package. Used to size per-clip trimming to the voice track.
+function getMediaDuration(filePath, execFileImpl = execFile) {
+  const args = ['-v', 'error', '-show_entries', 'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', filePath];
+  return new Promise((resolve, reject) => {
+    execFileImpl('ffprobe', args, { maxBuffer: 1024 * 1024 * 50 }, (error, stdout, stderr) => {
+      if (error) return reject(new Error(`ffprobe failed: ${stderr || error.message}`));
+      resolve(parseFloat(stdout));
+    });
+  });
+}
+
 async function renderJob(job, outDir, execFileImpl = execFile) {
   const srtPath = path.join(outDir, `${job.jobId}.srt`);
   writeSrt(job.captions, srtPath);
+  job.voiceDurationSec = await getMediaDuration(job.voicePath, execFileImpl);
   const results = {};
   for (const formatKey of ['16:9', '9:16']) {
     const outPath = path.join(outDir, `${job.jobId}-${formatKey.replace(':', 'x')}.mp4`);
@@ -31,4 +44,4 @@ async function renderThumbnail(job, outDir, execFileImpl = execFile) {
   return outPath;
 }
 
-module.exports = { runFfmpeg, renderJob, renderThumbnail };
+module.exports = { runFfmpeg, getMediaDuration, renderJob, renderThumbnail };
