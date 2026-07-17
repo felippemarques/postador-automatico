@@ -14,7 +14,7 @@
 
 - **Atualizar workflow via API é `PUT /api/v1/workflows/{id}`, não `PATCH`** (`PATCH` retorna 405). `PUT` substitui o objeto inteiro — sempre reenviar `name`, `nodes`, `connections`, `settings` completos.
 - **`mcp__n8n__execute_workflow` só executa workflows com trigger `Schedule Trigger`, `Webhook Trigger`, `Form Trigger` ou `Chat Trigger`** — `Execute Workflow Trigger` não está nessa lista, e o workflow precisa `active: true` + `settings.availableInMCP: true` (nenhum default). Cada workflow deste plano já nasce com `"settings": {"availableInMCP": true}`.
-- **Procedimento de Teste Isolado via MCP**: trocar temporariamente o `Execute Workflow Trigger` por `Schedule Trigger` + `Code` node hardcodando `{run_id, niche_id}` de teste, testar, restaurar o original depois.
+- **Procedimento de Teste Isolado via MCP**: trocar temporariamente o `Execute Workflow Trigger` por `Schedule Trigger` + `Code` node hardcodando `{run_id, niche_id}` de teste, testar, restaurar o original depois. ⚠️ **O Code node de substituição precisa manter o nome exato `"Execute Workflow Trigger"`** — qualquer node adiante que referencie `$node["Execute Workflow Trigger"]` quebra com `"Referenced node doesn't exist"` se o node de teste tiver outro nome.
 
 ```bash
 # $N8N_BASE, $N8N_API_KEY já setados. $WORKFLOW_ID = id do sub-workflow. $TEST_RUN_ID/$TEST_NICHE_ID de n8n-instance.local.md.
@@ -22,12 +22,10 @@ curl -s "$N8N_BASE/api/v1/workflows/$WORKFLOW_ID" -H "X-N8N-API-KEY: $N8N_API_KE
 
 jq --arg runId "$TEST_RUN_ID" --arg nicheId "$TEST_NICHE_ID" '
   .nodes = ([
-    {"parameters":{"rule":{"interval":[{"field":"days","daysInterval":365}]}},"id":"test-trigger","name":"Test Trigger","type":"n8n-nodes-base.scheduleTrigger","typeVersion":1.2,"position":[0,600]},
-    {"parameters":{"mode":"runOnceForAllItems","jsCode":("return [{ json: { run_id: " + $runId + ", niche_id: " + $nicheId + " } }];")},"id":"test-input","name":"Test Input","type":"n8n-nodes-base.code","typeVersion":2,"position":[120,600]}
+    {"parameters":{"rule":{"interval":[{"field":"days","daysInterval":365}]}},"id":"test-trigger","name":"Test Trigger Source","type":"n8n-nodes-base.scheduleTrigger","typeVersion":1.2,"position":[0,600]},
+    {"parameters":{"mode":"runOnceForAllItems","jsCode":("return [{ json: { run_id: " + $runId + ", niche_id: " + $nicheId + " } }];")},"id":"test-input","name":"Execute Workflow Trigger","type":"n8n-nodes-base.code","typeVersion":2,"position":[120,600]}
   ] + (.nodes | map(select(.name != "Execute Workflow Trigger")))) |
-  .connections["Test Trigger"] = {"main": [[{"node":"Test Input","type":"main","index":0}]]} |
-  .connections["Test Input"] = .connections["Execute Workflow Trigger"] |
-  del(.connections["Execute Workflow Trigger"]) |
+  .connections["Test Trigger Source"] = {"main": [[{"node":"Execute Workflow Trigger","type":"main","index":0}]]} |
   {name, nodes, connections, settings}
 ' /tmp/wf-live.json > /tmp/wf-test.json
 
@@ -40,7 +38,7 @@ Executar via MCP (`mcp__n8n__execute_workflow`, `workflowId: $WORKFLOW_ID`, sem 
 curl -s -X PUT "$N8N_BASE/api/v1/workflows/$WORKFLOW_ID" -H "X-N8N-API-KEY: $N8N_API_KEY" -H "Content-Type: application/json" --data-binary @/tmp/wf-live.json
 ```
 
-- **Node Postgres não avalia `{{ }}` no campo `query`**, mesmo com `=` — este plano já usa só `$1`+`additionalFields.queryParams`, não alterar.
+- ⚠️ **`additionalFields.queryParams` do node Postgres NÃO é uma expression `{{ }}`** — é uma string literal separada por vírgula com **nomes de campo do item de entrada atual** (`item.json[nome]`, confirmado lendo o código-fonte do node). O plano original usava `"={{$json.niche_id}}"` (expression) — **errado**, falha com `"propertiesString.split is not a function"`. Correto: `"niche_id"` (nome puro). Isso também significa que `queryParams` **nunca** pode referenciar outro node (`$node[...]` não funciona ali) — só o item imediatamente anterior. Onde o valor precisa vir de mais de uma fonte (ex. dado de `video_runs` + `niches`), resolver com **1 query usando `JOIN`**; onde precisa "atravessar" uma chamada HTTP (perdendo campos), usar um Code node logo antes da escrita que remonta um item plano com exatamente os nomes citados em `queryParams`, puxando de `$node[...]` (Code node pode referenciar qualquer node livremente, só `queryParams` não pode). Os JSONs abaixo já aplicam essas correções.
 - **Node Postgres sem `RETURNING` devolve 0 linhas** — se tiver node depois na cadeia, precisa de `"alwaysOutputData": true`. Não se aplica aos sub-workflows deste plano (queries sem `RETURNING` já são o último node de cada cadeia).
 
 ---
@@ -376,7 +374,7 @@ Guardar a lista de URLs em `docs/superpowers/plans/n8n-instance.local.md` (mesmo
       "parameters": {
         "operation": "executeQuery",
         "query": "SELECT clip_keywords FROM postador.niches WHERE id = $1;",
-        "additionalFields": { "queryParams": "={{$json.niche_id}}" }
+        "additionalFields": { "queryParams": "niche_id" }
       },
       "id": "pg-read-keywords",
       "name": "Read niche assets config",
@@ -426,7 +424,7 @@ Guardar a lista de URLs em `docs/superpowers/plans/n8n-instance.local.md` (mesmo
     {
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "const MUSIC_TRACKS = [\n  'http://hdc4uggio012w03s44k1f4e3.137.131.180.11.sslip.io/files/music/track1.mp3',\n  'http://hdc4uggio012w03s44k1f4e3.137.131.180.11.sslip.io/files/music/track2.mp3',\n  'http://hdc4uggio012w03s44k1f4e3.137.131.180.11.sslip.io/files/music/track3.mp3'\n];\nconst musicUrl = MUSIC_TRACKS[Math.floor(Math.random() * MUSIC_TRACKS.length)];\nreturn [{ json: { clips: $json.clips, musicUrl } }];"
+        "jsCode": "const MUSIC_TRACKS = [\n  'http://hdc4uggio012w03s44k1f4e3.137.131.180.11.sslip.io/files/music/track1.mp3',\n  'http://hdc4uggio012w03s44k1f4e3.137.131.180.11.sslip.io/files/music/track2.mp3',\n  'http://hdc4uggio012w03s44k1f4e3.137.131.180.11.sslip.io/files/music/track3.mp3'\n];\nconst musicUrl = MUSIC_TRACKS[Math.floor(Math.random() * MUSIC_TRACKS.length)];\nreturn [{ json: { clipsJson: JSON.stringify($json.clips), musicUrl, run_id: $node[\"Execute Workflow Trigger\"].json.run_id } }];"
       },
       "id": "code-pick-music",
       "name": "Pick music",
@@ -438,7 +436,7 @@ Guardar a lista de URLs em `docs/superpowers/plans/n8n-instance.local.md` (mesmo
       "parameters": {
         "operation": "executeQuery",
         "query": "UPDATE postador.video_runs SET assets_json = $1, music_url = $2, current_step = 'assets', updated_at = now() WHERE id = $3;",
-        "additionalFields": { "queryParams": "={{JSON.stringify($json.clips)}},{{$json.musicUrl}},{{$node[\"Execute Workflow Trigger\"].json.run_id}}" }
+        "additionalFields": { "queryParams": "clipsJson,musicUrl,run_id" }
       },
       "id": "pg-save-assets",
       "name": "Save assets",
@@ -516,11 +514,11 @@ Rodar isso através do mesmo padrão do workflow descartável `_check-run.json` 
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT voice_url, captions_json, assets_json, music_url, topic FROM postador.video_runs WHERE id = $1;",
-        "additionalFields": { "queryParams": "={{$json.run_id}}" }
+        "query": "SELECT vr.voice_url, vr.captions_json, vr.assets_json, vr.music_url, vr.topic, n.mascot_image_url FROM postador.video_runs vr JOIN postador.niches n ON n.id = vr.niche_id WHERE vr.id = $1;",
+        "additionalFields": { "queryParams": "run_id" }
       },
       "id": "pg-read-run",
-      "name": "Read run assets",
+      "name": "Read run and niche",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 1,
       "position": [460, 300],
@@ -528,21 +526,8 @@ Rodar isso através do mesmo padrão do workflow descartável `_check-run.json` 
     },
     {
       "parameters": {
-        "operation": "executeQuery",
-        "query": "SELECT mascot_image_url FROM postador.niches WHERE id = $1;",
-        "additionalFields": { "queryParams": "={{$node[\"Execute Workflow Trigger\"].json.niche_id}}" }
-      },
-      "id": "pg-read-mascot",
-      "name": "Read niche mascot",
-      "type": "n8n-nodes-base.postgres",
-      "typeVersion": 1,
-      "position": [680, 300],
-      "credentials": { "postgres": { "id": "__PG_CRED_ID__", "name": "Postgres postador" } }
-    },
-    {
-      "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "const run = $node[\"Read run assets\"].json;\nconst clips = typeof run.assets_json === 'string' ? JSON.parse(run.assets_json) : run.assets_json;\nconst captions = typeof run.captions_json === 'string' ? JSON.parse(run.captions_json) : run.captions_json;\nreturn [{ json: { jobId: 'run-' + $node[\"Execute Workflow Trigger\"].json.run_id, clips, voiceUrl: run.voice_url, musicUrl: run.music_url, captions } }];"
+        "jsCode": "const run = $json;\nconst clips = typeof run.assets_json === 'string' ? JSON.parse(run.assets_json) : run.assets_json;\nconst captions = typeof run.captions_json === 'string' ? JSON.parse(run.captions_json) : run.captions_json;\nreturn [{ json: { jobId: 'run-' + $node[\"Execute Workflow Trigger\"].json.run_id, clips, voiceUrl: run.voice_url, musicUrl: run.music_url, captions, mascotImageUrl: run.mascot_image_url, topic: run.topic, run_id: $node[\"Execute Workflow Trigger\"].json.run_id } }];"
       },
       "id": "code-build-render-job",
       "name": "Build render job",
@@ -572,7 +557,7 @@ Rodar isso através do mesmo padrão do workflow descartável `_check-run.json` 
     {
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "const RENDER_BASE = 'http://hdc4uggio012w03s44k1f4e3.137.131.180.11.sslip.io';\nreturn [{ json: { render16x9: RENDER_BASE + $json.files['16:9'], render9x16: RENDER_BASE + $json.files['9:16'] } }];"
+        "jsCode": "const RENDER_BASE = 'http://hdc4uggio012w03s44k1f4e3.137.131.180.11.sslip.io';\nconst src = $node[\"Build render job\"].json;\nreturn [{ json: { render16x9: RENDER_BASE + $json.files['16:9'], render9x16: RENDER_BASE + $json.files['9:16'], jobId: src.jobId, mascotImageUrl: src.mascotImageUrl, topic: src.topic, run_id: src.run_id } }];"
       },
       "id": "code-build-render-urls",
       "name": "Build absolute render URLs",
@@ -590,7 +575,7 @@ Rodar isso através do mesmo padrão do workflow descartável `_check-run.json` 
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ { jobId: $node[\"Build render job\"].json.jobId, mascotImageUrl: $node[\"Read niche mascot\"].json.mascot_image_url, text: $node[\"Read run assets\"].json.topic } }}",
+        "jsonBody": "={{ { jobId: $json.jobId, mascotImageUrl: $json.mascotImageUrl, text: $json.topic } }}",
         "options": {}
       },
       "id": "http-thumbnail",
@@ -602,7 +587,7 @@ Rodar isso através do mesmo padrão do workflow descartável `_check-run.json` 
     {
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "const RENDER_BASE = 'http://hdc4uggio012w03s44k1f4e3.137.131.180.11.sslip.io';\nreturn [{ json: { thumbnail_url: RENDER_BASE + $json.url } }];"
+        "jsCode": "const RENDER_BASE = 'http://hdc4uggio012w03s44k1f4e3.137.131.180.11.sslip.io';\nconst src = $node[\"Build absolute render URLs\"].json;\nreturn [{ json: { thumbnail_url: RENDER_BASE + $json.url, render16x9: src.render16x9, render9x16: src.render9x16, run_id: src.run_id } }];"
       },
       "id": "code-build-thumb-url",
       "name": "Build absolute thumbnail URL",
@@ -614,7 +599,7 @@ Rodar isso através do mesmo padrão do workflow descartável `_check-run.json` 
       "parameters": {
         "operation": "executeQuery",
         "query": "UPDATE postador.video_runs SET render_16x9_url = $1, render_9x16_url = $2, thumbnail_url = $3, current_step = 'render', updated_at = now() WHERE id = $4;",
-        "additionalFields": { "queryParams": "={{$node[\"Build absolute render URLs\"].json.render16x9}},{{$node[\"Build absolute render URLs\"].json.render9x16}},{{$json.thumbnail_url}},{{$node[\"Execute Workflow Trigger\"].json.run_id}}" }
+        "additionalFields": { "queryParams": "render16x9,render9x16,thumbnail_url,run_id" }
       },
       "id": "pg-save-render",
       "name": "Save render results",
@@ -625,9 +610,8 @@ Rodar isso através do mesmo padrão do workflow descartável `_check-run.json` 
     }
   ],
   "connections": {
-    "Execute Workflow Trigger": { "main": [[{ "node": "Read run assets", "type": "main", "index": 0 }]] },
-    "Read run assets": { "main": [[{ "node": "Read niche mascot", "type": "main", "index": 0 }]] },
-    "Read niche mascot": { "main": [[{ "node": "Build render job", "type": "main", "index": 0 }]] },
+    "Execute Workflow Trigger": { "main": [[{ "node": "Read run and niche", "type": "main", "index": 0 }]] },
+    "Read run and niche": { "main": [[{ "node": "Build render job", "type": "main", "index": 0 }]] },
     "Build render job": { "main": [[{ "node": "Call render-service /render", "type": "main", "index": 0 }]] },
     "Call render-service /render": { "main": [[{ "node": "Build absolute render URLs", "type": "main", "index": 0 }]] },
     "Build absolute render URLs": { "main": [[{ "node": "Call render-service /thumbnail", "type": "main", "index": 0 }]] },
