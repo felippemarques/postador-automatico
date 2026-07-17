@@ -5,6 +5,13 @@ const FORMATS = {
   '9:16': { width: 1080, height: 1920 },
 };
 
+// Source clips arrive at whatever frame rate the stock provider shipped
+// (Pexels/Pixabay mix 25fps and 30fps). Without normalizing to one fps before
+// `concat`, its output timebase becomes the LCM of the inputs' timebases,
+// which explodes and makes libx264 duplicate frames trying to fill it
+// (observed: ~40000 frames encoded for 70ms of real output).
+const OUTPUT_FPS = 25;
+
 function pad(n, len = 2) {
   return String(n).padStart(len, '0');
 }
@@ -57,7 +64,7 @@ function buildFfmpegArgs(job, formatKey, srtPath, outPath) {
   inputs.push('-i', job.musicPath);
 
   const scaleLabels = job.clips
-    .map((_, i) => `[${i}:v]scale=${width}:${height}:force_original_aspect_ratio=increase,crop=${width}:${height},setsar=1[v${i}]`)
+    .map((_, i) => `[${i}:v]scale=${width}:${height}:force_original_aspect_ratio=increase,crop=${width}:${height},setsar=1,fps=${OUTPUT_FPS}[v${i}]`)
     .join(';');
   const concatInputs = job.clips.map((_, i) => `[v${i}]`).join('');
   const concat = `${concatInputs}concat=n=${clipCount}:v=1:a=0[vcat]`;

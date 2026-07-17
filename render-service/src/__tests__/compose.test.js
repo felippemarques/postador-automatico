@@ -30,6 +30,19 @@ test('buildFfmpegArgs builds filter_complex for 16:9 with 2 clips', () => {
   assert.equal(args.at(-1), 'out.mp4');
 });
 
+test('buildFfmpegArgs normalizes fps on every clip before concat (mixed source frame rates would otherwise blow up the concat timebase)', () => {
+  const job = {
+    clips: [{ path: 'a.mp4' }, { path: 'b.mp4' }],
+    voicePath: 'voice.mp3',
+    musicPath: 'music.mp3',
+  };
+  const args = buildFfmpegArgs(job, '16:9', 'out.srt', 'out.mp4');
+  const filter = args[args.indexOf('-filter_complex') + 1];
+  const perClipChains = filter.split(';').filter((chain) => /\[v\d+\]$/.test(chain));
+  assert.equal(perClipChains.length, 2);
+  perClipChains.forEach((chain) => assert.match(chain, /,fps=25\[v\d+\]$/));
+});
+
 test('buildFfmpegArgs builds 9:16 with correct dimensions', () => {
   const job = { clips: [{ path: 'a.mp4' }], voicePath: 'v.mp3', musicPath: 'm.mp3' };
   const args = buildFfmpegArgs(job, '9:16', 'out.srt', 'out.mp4');
