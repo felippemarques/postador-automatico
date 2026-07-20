@@ -1,0 +1,222 @@
+{
+  "name": "Postador - Publish",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "trigger-1",
+      "name": "Execute Workflow Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT vr.id AS run_id, vr.status, vr.render_16x9_url, vr.render_9x16_url, vr.topic, vr.script_text, n.youtube_made_for_kids, n.dry_run FROM postador.video_runs vr JOIN postador.niches n ON n.id = vr.niche_id WHERE vr.id = $1;",
+        "additionalFields": { "queryParams": "run_id" }
+      },
+      "id": "pg-read-run",
+      "name": "Read run and niche for publish",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [460, 300],
+      "credentials": { "postgres": { "id": "__PG_CRED_ID__", "name": "Postgres postador" } }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [
+            {
+              "id": "cond-approved",
+              "leftValue": "={{$json.status}}",
+              "rightValue": "aprovado",
+              "operator": { "type": "string", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-approved",
+      "name": "Is approved?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE postador.video_runs SET current_step = 'publish_skipped', updated_at = now() WHERE id = $1;",
+        "additionalFields": { "queryParams": "run_id" }
+      },
+      "id": "pg-skip",
+      "name": "Mark publish skipped",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [900, 460],
+      "credentials": { "postgres": { "id": "__PG_CRED_ID__", "name": "Postgres postador" } }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [
+            {
+              "id": "cond-dry-run",
+              "leftValue": "={{$json.dry_run}}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-dry-run",
+      "name": "Is dry run?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [900, 220]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE postador.video_runs SET current_step = 'dry_run_stop', updated_at = now() WHERE id = $1;",
+        "additionalFields": { "queryParams": "run_id" }
+      },
+      "id": "pg-dry-stop",
+      "name": "Mark dry-run stop",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [1120, 140],
+      "credentials": { "postgres": { "id": "__PG_CRED_ID__", "name": "Postgres postador" } }
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{$node[\"Read run and niche for publish\"].json.render_16x9_url}}",
+        "options": { "response": { "response": { "responseFormat": "file", "outputPropertyName": "data" } } }
+      },
+      "id": "http-download-16x9",
+      "name": "Download render 16:9",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "resource": "video",
+        "operation": "upload",
+        "title": "={{$node[\"Read run and niche for publish\"].json.topic}}",
+        "regionCode": "BR",
+        "categoryId": "27",
+        "binaryProperty": "data",
+        "options": {
+          "description": "={{$node[\"Read run and niche for publish\"].json.script_text}}",
+          "privacyStatus": "private",
+          "selfDeclaredMadeForKids": "={{$node[\"Read run and niche for publish\"].json.youtube_made_for_kids}}",
+          "notifySubscribers": false
+        }
+      },
+      "id": "youtube-upload-16x9",
+      "name": "Upload 16:9 to YouTube",
+      "type": "n8n-nodes-base.youTube",
+      "typeVersion": 1,
+      "position": [1340, 300],
+      "credentials": { "youTubeOAuth2Api": { "id": "__YOUTUBE_CRED_ID__", "name": "__YOUTUBE_CRED_NAME__" } }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "return [{ json: { videoId16x9: $json.id } }];"
+      },
+      "id": "code-extract-16x9-id",
+      "name": "Extract 16x9 video id",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1560, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{$node[\"Read run and niche for publish\"].json.render_9x16_url}}",
+        "options": { "response": { "response": { "responseFormat": "file", "outputPropertyName": "data" } } }
+      },
+      "id": "http-download-9x16",
+      "name": "Download render 9:16",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1780, 300]
+    },
+    {
+      "parameters": {
+        "resource": "video",
+        "operation": "upload",
+        "title": "={{$node[\"Read run and niche for publish\"].json.topic}} #Shorts",
+        "regionCode": "BR",
+        "categoryId": "27",
+        "binaryProperty": "data",
+        "options": {
+          "description": "={{$node[\"Read run and niche for publish\"].json.script_text}}",
+          "privacyStatus": "private",
+          "selfDeclaredMadeForKids": "={{$node[\"Read run and niche for publish\"].json.youtube_made_for_kids}}",
+          "notifySubscribers": false
+        }
+      },
+      "id": "youtube-upload-9x16",
+      "name": "Upload 9:16 to YouTube",
+      "type": "n8n-nodes-base.youTube",
+      "typeVersion": 1,
+      "position": [2000, 300],
+      "credentials": { "youTubeOAuth2Api": { "id": "__YOUTUBE_CRED_ID__", "name": "__YOUTUBE_CRED_NAME__" } }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "return [{ json: { videoId16x9: $node[\"Extract 16x9 video id\"].json.videoId16x9, videoId9x16: $json.id, run_id: $node[\"Read run and niche for publish\"].json.run_id } }];"
+      },
+      "id": "code-extract-9x16-id",
+      "name": "Extract 9x16 video id",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2220, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE postador.video_runs SET youtube_video_id = $1, youtube_shorts_id = $2, status = 'publicado', current_step = 'publish', updated_at = now() WHERE id = $3;",
+        "additionalFields": { "queryParams": "videoId16x9,videoId9x16,run_id" }
+      },
+      "id": "pg-save-publish",
+      "name": "Save publish results",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [2440, 300],
+      "credentials": { "postgres": { "id": "__PG_CRED_ID__", "name": "Postgres postador" } }
+    }
+  ],
+  "connections": {
+    "Execute Workflow Trigger": { "main": [[{ "node": "Read run and niche for publish", "type": "main", "index": 0 }]] },
+    "Read run and niche for publish": { "main": [[{ "node": "Is approved?", "type": "main", "index": 0 }]] },
+    "Is approved?": {
+      "main": [
+        [{ "node": "Is dry run?", "type": "main", "index": 0 }],
+        [{ "node": "Mark publish skipped", "type": "main", "index": 0 }]
+      ]
+    },
+    "Is dry run?": {
+      "main": [
+        [{ "node": "Mark dry-run stop", "type": "main", "index": 0 }],
+        [{ "node": "Download render 16:9", "type": "main", "index": 0 }]
+      ]
+    },
+    "Download render 16:9": { "main": [[{ "node": "Upload 16:9 to YouTube", "type": "main", "index": 0 }]] },
+    "Upload 16:9 to YouTube": { "main": [[{ "node": "Extract 16x9 video id", "type": "main", "index": 0 }]] },
+    "Extract 16x9 video id": { "main": [[{ "node": "Download render 9:16", "type": "main", "index": 0 }]] },
+    "Download render 9:16": { "main": [[{ "node": "Upload 9:16 to YouTube", "type": "main", "index": 0 }]] },
+    "Upload 9:16 to YouTube": { "main": [[{ "node": "Extract 9x16 video id", "type": "main", "index": 0 }]] },
+    "Extract 9x16 video id": { "main": [[{ "node": "Save publish results", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "availableInMCP": true }
+}
