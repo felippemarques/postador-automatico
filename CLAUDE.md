@@ -28,7 +28,6 @@ Documentação de decisão vive em `docs/superpowers/specs/` (specs macro, aprov
 
 **Pendente:**
 - Cleanup — plano já escrito (`docs/superpowers/plans/2026-07-16-n8n-main-pipeline-observability.md` menciona escopo adiado), sem endpoint de exclusão de arquivo nos serviços ainda, deferido pra quando o uso real justificar.
-- Publish tinha uma cópia duplicada/arquivada (`id=5ThN6VyUOGCWVvWF`) descoberta nesta sessão — arquivada pelo usuário, real é `WzykicrsWM9N0Wqi`. Vale checar se Assets/Aprovação também têm cópias arquivadas soltas por aí (usuário mencionou que sim, mas os ids que ele confirmou bateram com os já em uso).
 
 ## Serviços e comandos
 
