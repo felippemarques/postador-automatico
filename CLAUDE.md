@@ -14,19 +14,21 @@ Documentação de decisão vive em `docs/superpowers/specs/` (specs macro, aprov
 4. `docs/superpowers/plans/2026-07-15-tts-service-piper-migration.md` — migração pra Piper TTS local (concluído, é a versão atual em produção).
 5. `docs/superpowers/specs/2026-07-15-n8n-workflows-design.md` — design dos workflows n8n em si (aprovado, **ainda sem plano de implementação** — próximo passo).
 
-## Status atual (2026-07-19)
+## Status atual (2026-07-20)
 
 **Concluído e publicado:**
 - `render-service` (Node/Express) e `whisper-service` (Python/FastAPI) — deployados, smoke-testados. `render-service` ganhou endpoint `POST /thumbnail` (mascote + texto sobreposto via ffmpeg `drawtext`).
 - `tts-service` (Python/FastAPI) — deployado, smoke-testado. Motor é **Piper TTS local/offline**, não Edge-TTS (ver "Decisões e armadilhas" abaixo pro porquê).
 - Schema Postgres `postador` criado no banco (plano de fundações executado).
-- Sub-workflows n8n: **Roteiro, Voz, Legenda, Assets, Render, Aprovação, Publish** — implementados, registrados, testados isolados (ver `docs/superpowers/plans/n8n-instance.local.md` pros ids). Assets busca clipes Pexels (fallback Pixabay) + música fixa; Render chama `render-service` `/render` + `/thumbnail`; Aprovação usa node nativo Telegram `sendAndWait` (aprovação com um toque no chat); Publish faz upload YouTube (16:9 + Shorts) com gate `dry_run` e `privacyStatus: private` por padrão — testado com upload real (privado) em 2026-07-19, confirmado no YouTube Studio.
+- Sub-workflows n8n: **Roteiro, Voz, Legenda, Assets, Render, Aprovação, Publish** — implementados, registrados, testados isolados (ver `docs/superpowers/plans/n8n-instance.local.md` pros ids). Assets busca clipes Pexels (fallback Pixabay) + música fixa; Render chama `render-service` `/render` + `/thumbnail`; Aprovação usa node nativo Telegram `sendAndWait` (aprovação com um toque no chat); Publish faz upload YouTube (16:9 + Shorts) com gate `dry_run` e `privacyStatus: private` por padrão.
 - Task 2 do plano Assets/Render: 5 faixas de música fixas reais em `render-service`'s `/files/music/track{1..5}.mp3` (fonte incompetech.com, CC-BY — atribuição pendente no Publish, ver abaixo).
 - **Aprovação/Publish registrados via UI do n8n (Import from File + credenciais escolhidas por dropdown), não via API `curl`** — evita expor a API key na sessão. Descoberta: a UI recusa ligar `settings.availableInMCP` pra workflow com `Execute Workflow Trigger`, então esses 2 workflows ficam invisíveis pro MCP (`search_workflows`/`get_workflow_details`); teste isolado precisa ser feito manualmente na UI (clicar no node trigger, colar `{run_id, niche_id}`, "Test workflow"), não via MCP.
+- **Main Pipeline + Error Workflow (`n8n-workflows/main-pipeline.json`, `n8n-workflows/error-workflow.json`) implementados, registrados via API, e ativos em produção desde 2026-07-20.** Main Pipeline dispara todo dia 8h (schedule trigger), lê nichos ativos, cria `video_runs`, e encadeia os 7 sub-workflows via `Execute Workflow`. Error Workflow captura falha de qualquer sub-workflow, marca `status='erro'` no run e alerta via Telegram — testado ao vivo forçando um erro real. Verificação ponta-a-ponta completa rodada 2x: 1x com `dry_run=true` (não publicou) e 1x com `dry_run=false` (2 uploads reais confirmados no YouTube Studio). Ver `n8n-instance.local.md` pros ids e os 2 bugs reais achados/corrigidos nessa execução (env var `N8N_API_KEY` bloqueada, IF node com `typeValidation` errado, e um bug de design que travava a cadeia inteira — todo sub-workflow precisou de `alwaysOutputData: true` no node terminal).
 
 **Pendente:**
-- Main Pipeline, Error Workflow, Cleanup — planos já escritos (`docs/superpowers/plans/2026-07-16-*.md`), execução pendente.
+- Cleanup — plano já escrito (`docs/superpowers/plans/2026-07-16-n8n-main-pipeline-observability.md` menciona escopo adiado), sem endpoint de exclusão de arquivo nos serviços ainda, deferido pra quando o uso real justificar.
 - Publish precisa incluir atribuição "Music by Kevin MacLeod (incompetech.com)" na descrição dos vídeos (licença CC-BY das faixas de música) — ainda não implementado no node de descrição do Publish.
+- Publish tinha uma cópia duplicada/arquivada (`id=5ThN6VyUOGCWVvWF`) descoberta nesta sessão — arquivada pelo usuário, real é `WzykicrsWM9N0Wqi`. Vale checar se Assets/Aprovação também têm cópias arquivadas soltas por aí (usuário mencionou que sim, mas os ids que ele confirmou bateram com os já em uso).
 
 ## Serviços e comandos
 
