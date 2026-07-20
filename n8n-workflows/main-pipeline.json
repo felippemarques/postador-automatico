@@ -1,0 +1,171 @@
+{
+  "name": "Postador - Main Pipeline",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": { "interval": [{ "field": "days", "daysInterval": 1, "triggerAtHour": 8, "triggerAtMinute": 0 }] }
+      },
+      "id": "trigger-schedule",
+      "name": "Daily Schedule",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id AS niche_id FROM postador.niches WHERE is_active = true;"
+      },
+      "id": "pg-active-niches",
+      "name": "Read active niches",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [460, 300],
+      "credentials": { "postgres": { "id": "UwnVbemNZVcThSbB", "name": "Postgres postador" } }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO postador.video_runs (niche_id, status, current_step) VALUES ($1, 'em_progresso', 'iniciado') RETURNING id AS run_id, niche_id;",
+        "additionalFields": { "queryParams": "niche_id" }
+      },
+      "id": "pg-create-run",
+      "name": "Create video_run",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [680, 300],
+      "credentials": { "postgres": { "id": "UwnVbemNZVcThSbB", "name": "Postgres postador" } }
+    },
+    {
+      "parameters": { "mode": "runOnceForAllItems", "jsCode": "return [{ json: { run_id: $node[\"Create video_run\"].json.run_id, niche_id: $node[\"Create video_run\"].json.niche_id } }];" },
+      "id": "code-input-roteiro",
+      "name": "Build input for Roteiro",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 300]
+    },
+    {
+      "parameters": { "source": "database", "workflowId": "WdwmATwH8cDbRVZO" },
+      "id": "exec-roteiro",
+      "name": "Call Roteiro",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": { "mode": "runOnceForAllItems", "jsCode": "return [{ json: { run_id: $node[\"Create video_run\"].json.run_id, niche_id: $node[\"Create video_run\"].json.niche_id } }];" },
+      "id": "code-input-voz",
+      "name": "Build input for Voz",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1340, 300]
+    },
+    {
+      "parameters": { "source": "database", "workflowId": "21MzrpQTSRFwh6Xa" },
+      "id": "exec-voz",
+      "name": "Call Voz",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [1560, 300]
+    },
+    {
+      "parameters": { "mode": "runOnceForAllItems", "jsCode": "return [{ json: { run_id: $node[\"Create video_run\"].json.run_id, niche_id: $node[\"Create video_run\"].json.niche_id } }];" },
+      "id": "code-input-legenda",
+      "name": "Build input for Legenda",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1780, 300]
+    },
+    {
+      "parameters": { "source": "database", "workflowId": "K2582L7TX9s8wLci" },
+      "id": "exec-legenda",
+      "name": "Call Legenda",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [2000, 300]
+    },
+    {
+      "parameters": { "mode": "runOnceForAllItems", "jsCode": "return [{ json: { run_id: $node[\"Create video_run\"].json.run_id, niche_id: $node[\"Create video_run\"].json.niche_id } }];" },
+      "id": "code-input-assets",
+      "name": "Build input for Assets",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2220, 300]
+    },
+    {
+      "parameters": { "source": "database", "workflowId": "hvC6AtEMoD7B3BuX" },
+      "id": "exec-assets",
+      "name": "Call Assets",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [2440, 300]
+    },
+    {
+      "parameters": { "mode": "runOnceForAllItems", "jsCode": "return [{ json: { run_id: $node[\"Create video_run\"].json.run_id, niche_id: $node[\"Create video_run\"].json.niche_id } }];" },
+      "id": "code-input-render",
+      "name": "Build input for Render",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2660, 300]
+    },
+    {
+      "parameters": { "source": "database", "workflowId": "7q2u4ySCyutTPGpC" },
+      "id": "exec-render",
+      "name": "Call Render",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [2880, 300]
+    },
+    {
+      "parameters": { "mode": "runOnceForAllItems", "jsCode": "return [{ json: { run_id: $node[\"Create video_run\"].json.run_id, niche_id: $node[\"Create video_run\"].json.niche_id } }];" },
+      "id": "code-input-aprovacao",
+      "name": "Build input for Aprovação",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [3100, 300]
+    },
+    {
+      "parameters": { "source": "database", "workflowId": "UtqBinFZ1gQ3IyVz" },
+      "id": "exec-aprovacao",
+      "name": "Call Aprovação",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [3320, 300]
+    },
+    {
+      "parameters": { "mode": "runOnceForAllItems", "jsCode": "return [{ json: { run_id: $node[\"Create video_run\"].json.run_id, niche_id: $node[\"Create video_run\"].json.niche_id } }];" },
+      "id": "code-input-publish",
+      "name": "Build input for Publish",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [3540, 300]
+    },
+    {
+      "parameters": { "source": "database", "workflowId": "WzykicrsWM9N0Wqi" },
+      "id": "exec-publish",
+      "name": "Call Publish",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [3760, 300]
+    }
+  ],
+  "connections": {
+    "Daily Schedule": { "main": [[{ "node": "Read active niches", "type": "main", "index": 0 }]] },
+    "Read active niches": { "main": [[{ "node": "Create video_run", "type": "main", "index": 0 }]] },
+    "Create video_run": { "main": [[{ "node": "Build input for Roteiro", "type": "main", "index": 0 }]] },
+    "Build input for Roteiro": { "main": [[{ "node": "Call Roteiro", "type": "main", "index": 0 }]] },
+    "Call Roteiro": { "main": [[{ "node": "Build input for Voz", "type": "main", "index": 0 }]] },
+    "Build input for Voz": { "main": [[{ "node": "Call Voz", "type": "main", "index": 0 }]] },
+    "Call Voz": { "main": [[{ "node": "Build input for Legenda", "type": "main", "index": 0 }]] },
+    "Build input for Legenda": { "main": [[{ "node": "Call Legenda", "type": "main", "index": 0 }]] },
+    "Call Legenda": { "main": [[{ "node": "Build input for Assets", "type": "main", "index": 0 }]] },
+    "Build input for Assets": { "main": [[{ "node": "Call Assets", "type": "main", "index": 0 }]] },
+    "Call Assets": { "main": [[{ "node": "Build input for Render", "type": "main", "index": 0 }]] },
+    "Build input for Render": { "main": [[{ "node": "Call Render", "type": "main", "index": 0 }]] },
+    "Call Render": { "main": [[{ "node": "Build input for Aprovação", "type": "main", "index": 0 }]] },
+    "Build input for Aprovação": { "main": [[{ "node": "Call Aprovação", "type": "main", "index": 0 }]] },
+    "Call Aprovação": { "main": [[{ "node": "Build input for Publish", "type": "main", "index": 0 }]] },
+    "Build input for Publish": { "main": [[{ "node": "Call Publish", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "errorWorkflow": "jwPN2t0n4jo5nXet", "availableInMCP": true }
+}
