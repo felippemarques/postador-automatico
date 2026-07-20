@@ -1,0 +1,137 @@
+{
+  "name": "Postador - Aprovação",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "trigger-1",
+      "name": "Execute Workflow Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT vr.id AS run_id, vr.topic, vr.script_text, vr.thumbnail_url, vr.render_16x9_url, n.approval_mode FROM postador.video_runs vr JOIN postador.niches n ON n.id = vr.niche_id WHERE vr.id = $1;",
+        "additionalFields": { "queryParams": "run_id" }
+      },
+      "id": "pg-read-run",
+      "name": "Read run and niche for approval",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [460, 300],
+      "credentials": { "postgres": { "id": "__PG_CRED_ID__", "name": "Postgres postador" } }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [
+            {
+              "id": "cond-manual",
+              "leftValue": "={{$json.approval_mode}}",
+              "rightValue": "manual",
+              "operator": { "type": "string", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-manual",
+      "name": "Is manual approval?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "sendPhoto",
+        "chatId": "={{$env.TELEGRAM_CHAT_ID}}",
+        "binaryData": false,
+        "file": "={{$json.thumbnail_url}}",
+        "additionalFields": { "caption": "={{$json.topic}}" }
+      },
+      "id": "tg-send-photo",
+      "name": "Send thumbnail preview",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [900, 200],
+      "credentials": { "telegramApi": { "id": "__TG_CRED_ID__", "name": "Telegram Postador" } }
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "sendAndWait",
+        "chatId": "={{$env.TELEGRAM_CHAT_ID}}",
+        "subject": "=Aprovação de vídeo — {{$node[\"Read run and niche for approval\"].json.topic}}",
+        "message": "=Tema: {{$node[\"Read run and niche for approval\"].json.topic}}\n\nTrecho do roteiro:\n{{$node[\"Read run and niche for approval\"].json.script_text.slice(0,300)}}...\n\nVídeo (16:9): {{$node[\"Read run and niche for approval\"].json.render_16x9_url}}",
+        "responseType": "approval",
+        "approvalOptions": {
+          "values": { "approvalType": "double", "approveLabel": "Aprovar", "disapproveLabel": "Rejeitar" }
+        },
+        "chatApproval": true,
+        "chatApprovalOptions": {},
+        "options": {}
+      },
+      "id": "tg-send-and-wait",
+      "name": "Send approval request",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [1120, 200],
+      "credentials": { "telegramApi": { "id": "__TG_CRED_ID__", "name": "Telegram Postador" } }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "return [{ json: { approved: $json.data.approved, run_id: $node[\"Execute Workflow Trigger\"].json.run_id } }];"
+      },
+      "id": "code-flatten-decision",
+      "name": "Flatten decision",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1340, 200]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE postador.video_runs SET status = CASE WHEN $1::boolean THEN 'aprovado' ELSE 'rejeitado' END, current_step = 'aprovacao', updated_at = now() WHERE id = $2;",
+        "additionalFields": { "queryParams": "approved,run_id" }
+      },
+      "id": "pg-update-manual",
+      "name": "Save manual decision",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [1560, 200],
+      "credentials": { "postgres": { "id": "__PG_CRED_ID__", "name": "Postgres postador" } }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE postador.video_runs SET status = 'aprovado', current_step = 'aprovacao', updated_at = now() WHERE id = $1;",
+        "additionalFields": { "queryParams": "run_id" }
+      },
+      "id": "pg-update-auto",
+      "name": "Save auto approval",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [900, 420],
+      "credentials": { "postgres": { "id": "__PG_CRED_ID__", "name": "Postgres postador" } }
+    }
+  ],
+  "connections": {
+    "Execute Workflow Trigger": { "main": [[{ "node": "Read run and niche for approval", "type": "main", "index": 0 }]] },
+    "Read run and niche for approval": { "main": [[{ "node": "Is manual approval?", "type": "main", "index": 0 }]] },
+    "Is manual approval?": {
+      "main": [
+        [{ "node": "Send thumbnail preview", "type": "main", "index": 0 }],
+        [{ "node": "Save auto approval", "type": "main", "index": 0 }]
+      ]
+    },
+    "Send thumbnail preview": { "main": [[{ "node": "Send approval request", "type": "main", "index": 0 }]] },
+    "Send approval request": { "main": [[{ "node": "Flatten decision", "type": "main", "index": 0 }]] },
+    "Flatten decision": { "main": [[{ "node": "Save manual decision", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "availableInMCP": true }
+}

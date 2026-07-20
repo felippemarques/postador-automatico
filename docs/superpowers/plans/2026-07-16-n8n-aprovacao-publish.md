@@ -54,7 +54,9 @@ curl -s -X PUT "$N8N_BASE/api/v1/workflows/$WORKFLOW_ID" -H "X-N8N-API-KEY: $N8N
 
 **Files:** nenhum arquivo de código — chamada de API.
 
-- [ ] **Step 1: Criar a credencial Telegram via API do n8n**
+- [x] **Step 1: Criar a credencial Telegram via API do n8n**
+
+**Concluído em 2026-07-18, com desvio**: feito via UI (Settings → Credentials → Add), não via `curl`/API key — evita expor a API key na conversa. `id = RMJkbhcAQmxSNFoK`.
 
 ```bash
 N8N_BASE="https://n8n.wm10.info"
@@ -233,28 +235,19 @@ Se esse endpoint não listar credenciais existentes (a API pública do n8n geral
 
 Nota de design: `Read run and niche for approval` faz **1 query com `JOIN`** (video_runs + niches) em vez de 2 nodes separados — evita o problema de `queryParams` só enxergar campos do item atual. `Flatten decision` existe porque `Send approval request` devolve o resultado aninhado em `$json.data.approved` (não `$json.approved`), e porque `run_id` precisa ser reintroduzido no item (a query original não tinha por onde carregá-lo até aqui sem esse node).
 
-- [ ] **Step 2: Substituir placeholders e registrar via API**
+- [x] **Step 2: Substituir placeholders e registrar via API**
 
-```bash
-(Get-Content n8n-workflows/aprovacao.json -Raw) -replace '__PG_CRED_ID__', $PG_CRED_ID -replace '__TG_CRED_ID__', $TG_CRED_ID | Set-Content n8n-workflows/aprovacao.json.tmp
-curl -s -X POST "$N8N_BASE/api/v1/workflows" -H "X-N8N-API-KEY: $N8N_API_KEY" -H "Content-Type: application/json" --data-binary @n8n-workflows/aprovacao.json.tmp
-```
+**Concluído em 2026-07-18, com desvio**: registrado via **Import from File** na UI do n8n (`n8n-workflows/aprovacao.json` como está, com placeholders) em vez de `curl`+API key. Depois do import, cada node com credencial faltando foi resolvido escolhendo no dropdown da UI (Postgres postador / Telegram Postador) — não precisou substituir os placeholders no arquivo. `id = UtqBinFZ1gQ3IyVz`. Ativado via toggle "Active" na UI.
 
-Expected: `200` com `id` — anotar em `n8n-instance.local.md` como `$APROVACAO_ID`. **Ativar** (`POST /api/v1/workflows/$APROVACAO_ID/activate`). Ativação é necessária tanto pro teste isolado via MCP quanto pro webhook de retomada do `sendAndWait` funcionar de verdade.
+- [x] **Step 3: Testar isolado**
 
-- [ ] **Step 3: Testar isolado**
+**Concluído em 2026-07-19, com desvio**: o "Procedimento de Teste Isolado via MCP" **não se aplicou** — a UI do n8n recusa ligar `settings.availableInMCP` pra workflow com `Execute Workflow Trigger` (erro "Error updating MCP settings..."), então o workflow importado via UI não aparece nem em `search_workflows` nem em `get_workflow_details` do MCP (ver Achado 6 em `n8n-instance.local.md`). Teste feito **direto na UI**: clicar no node "Execute Workflow Trigger" → colar `{"run_id": 1, "niche_id": 1}` no painel de teste → "Test workflow".
 
-Aplicar o "Procedimento de Teste Isolado via MCP" (seção de Achados acima) com `WORKFLOW_ID=$APROVACAO_ID`, executar via MCP com o nicho de teste (já tem `approval_mode='manual'` do seed).
+A execução **pausou** no node "Send approval request" como esperado — chegaram as 2 mensagens no Telegram (foto+legenda, depois pergunta com botões "Aprovar"/"Rejeitar" tocáveis no chat). Tocado "Aprovar" → execução retomou, node "Save manual decision" verde no painel (sem erro) → `video_runs.status` confirmado `'aprovado'`.
 
-⚠️ Nota de risco: o webhook de retomada do `sendAndWait` é criado dinamicamente por execução (diferente do webhook estático que falhou ao registrar no plano de fundações), mas a mesma topologia main/worker separada do Coolify pode afetá-lo também — se a execução não retomar depois de tocar no botão do Telegram, checar os logs do processo `n8n`/`n8n-worker` no Coolify antes de assumir que é bug de configuração do workflow.
+**Teste de rejeição pulado** (decisão consciente, não esquecimento): exigiria um `run_id` novo (rodar Roteiro→Voz→Legenda→Assets→Render de novo só pra isso), e a lógica é um `CASE WHEN approved THEN 'aprovado' ELSE 'rejeitado'` trivial — risco baixo o suficiente pra pular num projeto pessoal.
 
-A execução deve **pausar** no node `Send approval request` — verificar no Telegram configurado (`TELEGRAM_CHAT_ID`) que chegaram 2 mensagens: a foto da thumbnail com legenda, e a pergunta de aprovação com botões "Aprovar"/"Rejeitar" tocáveis direto no chat (não um link). Tocar "Aprovar".
-
-Expected: a execução retoma automaticamente, `video_runs.status` vira `'aprovado'`. Rodar de novo com um novo `run_id` de teste (reaproveitar o mesmo run vai falhar a leitura de `thumbnail_url` se ele já tiver sido sobrescrito por outro teste — usar um `run_id` fresco se disponível) e tocar "Rejeitar" dessa vez, confirmar `status='rejeitado'`.
-
-Se as mensagens não chegarem: checar `TELEGRAM_BOT_TOKEN`/`TELEGRAM_CHAT_ID` no env do n8n e o `accessToken` da credencial `telegramApi` (Task 1 deste plano).
-
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add n8n-workflows/aprovacao.json
@@ -499,37 +492,19 @@ git commit -m "feat(n8n): add Aprovação sub-workflow (Telegram native sendAndW
 
 Nota de design: `Read run and niche for publish` faz **1 query com `JOIN`** (video_runs + niches) — todo IF/HTTP/YouTube node adiante referencia esse node diretamente por `$node[...]` (permitido, só `queryParams` de Postgres não permite). `Extract 9x16 video id` é o único ponto que precisa remontar um item plano (`videoId16x9` + `videoId9x16` + `run_id`) pra alimentar `queryParams` do `Save publish results`.
 
-- [ ] **Step 2: Substituir placeholders e registrar via API**
+- [x] **Step 2: Substituir placeholders e registrar via API**
 
-```bash
-(Get-Content n8n-workflows/publish.json -Raw) `
-  -replace '__PG_CRED_ID__', $PG_CRED_ID `
-  -replace '__YOUTUBE_CRED_ID__', $YOUTUBE_CRED_ID `
-  -replace '__YOUTUBE_CRED_NAME__', $YOUTUBE_CRED_NAME `
-  | Set-Content n8n-workflows/publish.json.tmp
+**Concluído em 2026-07-18, com desvio** (mesmo padrão do Aprovação Task 2 Step 2): importado via UI (Import from File), credenciais Postgres/YouTube resolvidas via dropdown na UI. `id = 5ThN6VyUOGCWVvWF`. Ativado via toggle.
 
-curl -s -X POST "$N8N_BASE/api/v1/workflows" -H "X-N8N-API-KEY: $N8N_API_KEY" -H "Content-Type: application/json" --data-binary @n8n-workflows/publish.json.tmp
-```
+- [x] **Step 3: Testar isolado com `dry_run=true` primeiro (seed já tem isso como default)**
 
-Expected: `200` com `id`. Anotar em `n8n-instance.local.md` como `$PUBLISH_ID`. **Ativar** (`POST /api/v1/workflows/$PUBLISH_ID/activate`).
+**Concluído em 2026-07-19, com desvio**: teste direto na UI (mesmo motivo do Aprovação — workflow invisível ao MCP), colando `{"run_id": 1, "niche_id": 1}` no node trigger e "Test workflow". Confirmado: caminho `Is dry run?` → TRUE → `Mark dry-run stop`, nodes de upload YouTube **não executados** (cinza no painel).
 
-- [ ] **Step 3: Testar isolado com `dry_run=true` primeiro (seed já tem isso como default)**
+- [x] **Step 4: Testar publish real (opcional, só quando quiser validar o upload de verdade)**
 
-Aplicar o "Procedimento de Teste Isolado via MCP" com `WORKFLOW_ID=$PUBLISH_ID` e o `run_id`/`niche_id` de teste que teve `status='aprovado'` no Task 2, executar via MCP.
+**Feito em 2026-07-19** (usuário optou por validar agora em vez de adiar). `dry_run` setado `false` via `psql` direto no Terminal do serviço `postgresql` no Coolify (sem acesso via API/n8n pra isso). Rodado de novo o mesmo teste na UI — os 2 uploads aconteceram de verdade, confirmados **privados** no YouTube Studio. `dry_run` revertido pra `true` logo depois, confirmado pelo usuário.
 
-Expected: caminho `Is dry run?` → TRUE → `Mark dry-run stop`, `current_step` vira `'dry_run_stop'`, **nenhuma chamada real ao YouTube acontece**. Confirmar isso olhando o painel de execução do MCP (os nodes de upload não aparecem executados).
-
-- [ ] **Step 4: Testar publish real (opcional, só quando quiser validar o upload de verdade)**
-
-```sql
-UPDATE postador.niches SET dry_run = false WHERE id = <niche_id de teste>;
-```
-
-Rodar de novo o mesmo `run_id`/`niche_id`. Expected: os 2 uploads acontecem, `youtube_video_id`/`youtube_shorts_id` preenchidos, `status='publicado'`. Como `privacyStatus` está `private`, o vídeo **não fica público** — abrir `https://studio.youtube.com` logado na conta certa pra conferir os 2 uploads na aba de vídeos privados. Trocar `privacyStatus` pra `public`/`unlisted` no JSON (e re-registrar via `GET`+`PUT`, não `PATCH`) só quando estiver pronto pra publicar de verdade.
-
-Depois do teste, rodar `UPDATE postador.niches SET dry_run = true WHERE id = <niche_id de teste>;` de novo pra não deixar o nicho de teste publicando de verdade por acidente em execuções futuras.
-
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add n8n-workflows/publish.json
