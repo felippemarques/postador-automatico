@@ -331,23 +331,25 @@ Expected: `200`, JSON `{"jobId":"smoke-thumb-1","url":"/files/smoke-thumb-1/....
 
 **Files:** nenhum arquivo de código — upload manual de arquivos.
 
-- [ ] **Step 1: Baixar 3-5 faixas instrumentais royalty-free** (ex. Pixabay Music via navegador, licença permite uso livre até sem atribuição conforme a licença do site — checar a licença de cada faixa individualmente na página de download) em `.mp3`, curtas (60-90s, looping-friendly), tom alegre/infantil coerente com o nicho.
+- [x] **Step 1: Baixar 3-5 faixas instrumentais royalty-free** (ex. Pixabay Music via navegador, licença permite uso livre até sem atribuição conforme a licença do site — checar a licença de cada faixa individualmente na página de download) em `.mp3`, curtas (60-90s, looping-friendly), tom alegre/infantil coerente com o nicho.
 
-- [ ] **Step 2: Subir os arquivos pro volume persistente do `render-service`** (`RENDERS_DIR`, que é servido em `/files`)
+**Concluído em 2026-07-18, com desvio**: Pixabay bloqueia scraping automatizado do site de música (403), sem API pública pra música (só imagens/vídeos). Fonte usada: incompetech.com (Kevin MacLeod), URLs diretas de mp3 estáveis, sem bloqueio de bot. Licença **CC-BY 4.0** (com atribuição), não "sem atribuição" como esperado do Pixabay — ver pendência de atribuição no Publish abaixo. 5 faixas baixadas: Wallpaper, Merry Go, Carefree, Happy Boy Theme, Pixel Peeker Polka - faster (durações variam, todas bem acima dos 40s do vídeo — sem problema, `amix duration=first` em `compose.js` corta a música na duração da voz, não precisa looping).
 
-Não há endpoint de upload no `render-service` — usar acesso de arquivo do Coolify (aba "Terminal" do app no dashboard, ou `docker cp` se tiver acesso SSH à VPS) pra copiar os arquivos pra dentro de `$RENDERS_DIR/music/` no container (ex. `/data/renders/music/track1.mp3`). Se o volume for efêmero (recriado a cada deploy), documentar isso e preferir montar `music/` como parte de um volume persistente já existente do Coolify — checar a config do app no dashboard.
+- [x] **Step 2: Subir os arquivos pro volume persistente do `render-service`** (`RENDERS_DIR`, que é servido em `/files`)
 
-- [ ] **Step 3: Confirmar acessível publicamente**
+**Concluído em 2026-07-18**: sem acesso SSH à VPS (publickey negado) e sem `docker cp` viável — upload feito de dentro do próprio container via Coolify Terminal, rodando um script `node -e` (Node sempre presente na imagem, sem depender de `curl`/`wget` que a imagem `node:22-slim` não garante) que baixou os 5 mp3 direto de incompetech.com pra `/data/renders/music/track{1..5}.mp3`.
+
+- [x] **Step 3: Confirmar acessível publicamente**
 
 ```bash
 curl -sI http://hdc4uggio012w03s44k1f4e3.137.131.180.11.sslip.io/files/music/track1.mp3
 ```
 
-Expected: `200`, `content-type: audio/mpeg`.
+Expected: `200`, `content-type: audio/mpeg`. **Confirmado em 2026-07-18 pras 5 faixas** (`200`, `audio/mpeg`, `content-length` batendo com os arquivos baixados).
 
-- [ ] **Step 4: Anotar as URLs finais**
+- [x] **Step 4: Anotar as URLs finais**
 
-Guardar a lista de URLs em `docs/superpowers/plans/n8n-instance.local.md` (mesmo arquivo local do plano de fundações) — usada como lista fixa no Code node do Assets sub-workflow (Task 4 abaixo).
+Guardar a lista de URLs em `docs/superpowers/plans/n8n-instance.local.md` (mesmo arquivo local do plano de fundações) — usada como lista fixa no Code node do Assets sub-workflow (Task 4 abaixo). **Feito**: node "Pick music" do workflow `hvC6AtEMoD7B3BuX` atualizado direto na UI do n8n com as 5 URLs (evitando `PUT` via API, que exigiria reconstruir o workflow inteiro sem visibilidade das credenciais Postgres já configuradas nos nodes — risco de perdê-las).
 
 ---
 

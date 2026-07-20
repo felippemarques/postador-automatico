@@ -14,19 +14,19 @@ Documentação de decisão vive em `docs/superpowers/specs/` (specs macro, aprov
 4. `docs/superpowers/plans/2026-07-15-tts-service-piper-migration.md` — migração pra Piper TTS local (concluído, é a versão atual em produção).
 5. `docs/superpowers/specs/2026-07-15-n8n-workflows-design.md` — design dos workflows n8n em si (aprovado, **ainda sem plano de implementação** — próximo passo).
 
-## Status atual (2026-07-17)
+## Status atual (2026-07-19)
 
 **Concluído e publicado:**
 - `render-service` (Node/Express) e `whisper-service` (Python/FastAPI) — deployados, smoke-testados. `render-service` ganhou endpoint `POST /thumbnail` (mascote + texto sobreposto via ffmpeg `drawtext`).
 - `tts-service` (Python/FastAPI) — deployado, smoke-testado. Motor é **Piper TTS local/offline**, não Edge-TTS (ver "Decisões e armadilhas" abaixo pro porquê).
 - Schema Postgres `postador` criado no banco (plano de fundações executado).
-- Sub-workflows n8n: **Roteiro, Voz, Legenda, Assets, Render** — implementados, registrados via API, testados isolados (ver `docs/superpowers/plans/n8n-instance.local.md` pros ids). Assets busca clipes Pexels (fallback Pixabay) + música fixa; Render chama `render-service` `/render` + `/thumbnail`.
+- Sub-workflows n8n: **Roteiro, Voz, Legenda, Assets, Render, Aprovação, Publish** — implementados, registrados, testados isolados (ver `docs/superpowers/plans/n8n-instance.local.md` pros ids). Assets busca clipes Pexels (fallback Pixabay) + música fixa; Render chama `render-service` `/render` + `/thumbnail`; Aprovação usa node nativo Telegram `sendAndWait` (aprovação com um toque no chat); Publish faz upload YouTube (16:9 + Shorts) com gate `dry_run` e `privacyStatus: private` por padrão — testado com upload real (privado) em 2026-07-19, confirmado no YouTube Studio.
+- Task 2 do plano Assets/Render: 5 faixas de música fixas reais em `render-service`'s `/files/music/track{1..5}.mp3` (fonte incompetech.com, CC-BY — atribuição pendente no Publish, ver abaixo).
+- **Aprovação/Publish registrados via UI do n8n (Import from File + credenciais escolhidas por dropdown), não via API `curl`** — evita expor a API key na sessão. Descoberta: a UI recusa ligar `settings.availableInMCP` pra workflow com `Execute Workflow Trigger`, então esses 2 workflows ficam invisíveis pro MCP (`search_workflows`/`get_workflow_details`); teste isolado precisa ser feito manualmente na UI (clicar no node trigger, colar `{run_id, niche_id}`, "Test workflow"), não via MCP.
 
 **Pendente:**
-- Aprovação, Publish, Main Pipeline, Error Workflow, Cleanup — planos já escritos (`docs/superpowers/plans/2026-07-16-*.md`), execução pendente.
-- Task 2 do plano Assets/Render: curar e subir 3-5 faixas de música fixas reais em `render-service`'s `/files/music/` (hoje as URLs no workflow Assets são placeholder, arquivo ainda não existe no volume).
-- **Investigar performance/estabilidade do `/render` na VPS ARM** — ver armadilha abaixo, achado em 2026-07-17.
-- Credenciais n8n adicionais (YouTube OAuth2 pro Publish) — pendente, ver plano de Aprovação+Publish.
+- Main Pipeline, Error Workflow, Cleanup — planos já escritos (`docs/superpowers/plans/2026-07-16-*.md`), execução pendente.
+- Publish precisa incluir atribuição "Music by Kevin MacLeod (incompetech.com)" na descrição dos vídeos (licença CC-BY das faixas de música) — ainda não implementado no node de descrição do Publish.
 
 ## Serviços e comandos
 
