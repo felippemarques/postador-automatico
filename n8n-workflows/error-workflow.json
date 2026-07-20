@@ -1,0 +1,103 @@
+{
+  "name": "Postador - Error Workflow",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "error-trigger-1",
+      "name": "Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{$env.N8N_BASE_URL}}/api/v1/executions/{{$json.execution.id}}?includeData=true",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [{ "name": "X-N8N-API-KEY", "value": "={{$env.N8N_SELF_API_KEY}}" }]
+        },
+        "options": {}
+      },
+      "id": "http-get-execution",
+      "name": "Get failed execution details",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const exec = $json;\nconst runData = (exec.data && exec.data.resultData && exec.data.resultData.runData) || {};\nlet runId = null;\nlet nicheId = null;\nconst triggerRuns = runData['Execute Workflow Trigger'];\nif (triggerRuns && triggerRuns[0] && triggerRuns[0].data && triggerRuns[0].data.main && triggerRuns[0].data.main[0] && triggerRuns[0].data.main[0][0]) {\n  const input = triggerRuns[0].data.main[0][0].json || {};\n  runId = input.run_id != null ? input.run_id : null;\n  nicheId = input.niche_id != null ? input.niche_id : null;\n}\nconst errTrigger = $node[\"Error Trigger\"].json;\nreturn [{\n  json: {\n    runId,\n    nicheId,\n    workflowName: (errTrigger.workflow && errTrigger.workflow.name) || 'desconhecido',\n    lastNodeExecuted: (errTrigger.execution && errTrigger.execution.lastNodeExecuted) || 'desconhecido',\n    errorMessage: (errTrigger.execution && errTrigger.execution.error && errTrigger.execution.error.message) || 'erro desconhecido',\n    executionUrl: (errTrigger.execution && errTrigger.execution.url) || ''\n  }\n}];"
+      },
+      "id": "code-extract-context",
+      "name": "Extract run context",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "loose" },
+          "conditions": [
+            {
+              "id": "cond-has-run",
+              "leftValue": "={{$json.runId}}",
+              "rightValue": "",
+              "operator": { "type": "string", "operation": "notEquals" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-has-run",
+      "name": "Has run context?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE postador.video_runs SET status = 'erro', error_message = $1, updated_at = now() WHERE id = $2;",
+        "additionalFields": { "queryParams": "errorMessage,runId" }
+      },
+      "id": "pg-mark-erro",
+      "name": "Mark run as erro",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [1120, 220],
+      "alwaysOutputData": true,
+      "credentials": { "postgres": { "id": "UwnVbemNZVcThSbB", "name": "Postgres postador" } }
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "sendMessage",
+        "chatId": "={{$env.TELEGRAM_CHAT_ID}}",
+        "text": "=⚠️ Erro no pipeline\nWorkflow: {{$node[\"Extract run context\"].json.workflowName}}\nÚltimo node: {{$node[\"Extract run context\"].json.lastNodeExecuted}}\nRun ID: {{$node[\"Extract run context\"].json.runId}}\nNicho ID: {{$node[\"Extract run context\"].json.nicheId}}\nErro: {{$node[\"Extract run context\"].json.errorMessage}}\nExecução: {{$node[\"Extract run context\"].json.executionUrl}}"
+      },
+      "id": "tg-alert",
+      "name": "Send error alert",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [1340, 300],
+      "credentials": { "telegramApi": { "id": "RMJkbhcAQmxSNFoK", "name": "Telegram Postador" } }
+    }
+  ],
+  "connections": {
+    "Error Trigger": { "main": [[{ "node": "Get failed execution details", "type": "main", "index": 0 }]] },
+    "Get failed execution details": { "main": [[{ "node": "Extract run context", "type": "main", "index": 0 }]] },
+    "Extract run context": { "main": [[{ "node": "Has run context?", "type": "main", "index": 0 }]] },
+    "Has run context?": {
+      "main": [
+        [{ "node": "Mark run as erro", "type": "main", "index": 0 }],
+        [{ "node": "Send error alert", "type": "main", "index": 0 }]
+      ]
+    },
+    "Mark run as erro": { "main": [[{ "node": "Send error alert", "type": "main", "index": 0 }]] }
+  },
+  "settings": {}
+}
