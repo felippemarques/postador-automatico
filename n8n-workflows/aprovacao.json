@@ -66,7 +66,7 @@
         "operation": "sendAndWait",
         "chatId": "={{$env.TELEGRAM_CHAT_ID}}",
         "subject": "=Aprovação de vídeo — {{$node[\"Read run and niche for approval\"].json.topic}}",
-        "message": "=Tema: {{$node[\"Read run and niche for approval\"].json.topic}}\n\nTrecho do roteiro (long):\n{{$node[\"Read run and niche for approval\"].json.script_long_text.slice(0,300)}}...\n\nVídeo (16:9): {{$node[\"Read run and niche for approval\"].json.render_16x9_url}}\nVídeo (Shorts 9:16): {{$node[\"Read run and niche for approval\"].json.render_9x16_url}}",
+        "message": "=Tema: {{$node[\"Read run and niche for approval\"].json.topic}}\n\nTrecho do roteiro (long):\n{{$node[\"Read run and niche for approval\"].json.script_long_text.slice(0,500)}}...\n\nVídeo (16:9): {{$node[\"Read run and niche for approval\"].json.render_16x9_url}}\nVídeo (Shorts 9:16): {{$node[\"Read run and niche for approval\"].json.render_9x16_url}}",
         "responseType": "approval",
         "approvalOptions": {
           "values": { "approvalType": "double", "approveLabel": "Aprovar", "disapproveLabel": "Rejeitar" }
