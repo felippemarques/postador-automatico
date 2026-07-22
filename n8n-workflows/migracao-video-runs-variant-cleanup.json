@@ -1,0 +1,30 @@
+{
+  "name": "Postador - Cleanup colunas antigas video_runs (descartável)",
+  "nodes": [
+    {
+      "parameters": { "rule": { "interval": [{ "field": "days", "daysInterval": 365 }] } },
+      "id": "trigger-1",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "ALTER TABLE postador.video_runs\n  DROP COLUMN IF EXISTS script_text,\n  DROP COLUMN IF EXISTS voice_url,\n  DROP COLUMN IF EXISTS captions_json,\n  DROP COLUMN IF EXISTS assets_json,\n  DROP COLUMN IF EXISTS music_url;"
+      },
+      "id": "pg-ddl",
+      "name": "Run DDL",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [460, 300],
+      "alwaysOutputData": true,
+      "credentials": { "postgres": { "id": "__PG_CRED_ID__", "name": "Postgres postador" } }
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": { "main": [[{ "node": "Run DDL", "type": "main", "index": 0 }]] }
+  },
+  "settings": {}
+}
