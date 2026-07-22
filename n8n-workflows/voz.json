@@ -12,8 +12,8 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT vr.script_text AS script_text, n.voice_id AS voice_id FROM postador.video_runs vr JOIN postador.niches n ON n.id = vr.niche_id WHERE vr.id = $1;",
-        "additionalFields": { "queryParams": "run_id" }
+        "query": "SELECT CASE WHEN $2 = 'long' THEN vr.script_long_text ELSE vr.script_short_text END AS script_text, n.voice_id AS voice_id FROM postador.video_runs vr JOIN postador.niches n ON n.id = vr.niche_id WHERE vr.id = $1;",
+        "additionalFields": { "queryParams": "run_id,variant" }
       },
       "id": "pg-read-script-voice",
       "name": "Read script and voice",
@@ -55,7 +55,7 @@
     {
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "const TTS_BASE = 'http://ha2pmlzqqxtr8c8szjt0mfz6.137.131.180.11.sslip.io';\nreturn [{ json: { voice_url: TTS_BASE + $json.url, run_id: $node[\"Execute Workflow Trigger\"].json.run_id } }];"
+        "jsCode": "const TTS_BASE = 'http://ha2pmlzqqxtr8c8szjt0mfz6.137.131.180.11.sslip.io';\nreturn [{ json: { voice_url: TTS_BASE + $json.url, run_id: $node[\"Execute Workflow Trigger\"].json.run_id, variant: $node[\"Execute Workflow Trigger\"].json.variant } }];"
       },
       "id": "code-absolute-url",
       "name": "Build absolute URL",
@@ -66,14 +66,15 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "UPDATE postador.video_runs SET voice_url = $1, current_step = 'voz', updated_at = now() WHERE id = $2;",
-        "additionalFields": { "queryParams": "voice_url,run_id" }
+        "query": "UPDATE postador.video_runs SET voice_long_url = CASE WHEN $2 = 'long' THEN $1 ELSE voice_long_url END, voice_short_url = CASE WHEN $2 = 'short' THEN $1 ELSE voice_short_url END, current_step = 'voz', updated_at = now() WHERE id = $3;",
+        "additionalFields": { "queryParams": "voice_url,variant,run_id" }
       },
       "id": "pg-save-voice",
       "name": "Save voice_url",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 1,
       "position": [1340, 300],
+      "alwaysOutputData": true,
       "credentials": { "postgres": { "id": "__PG_CRED_ID__", "name": "Postgres postador" } }
     }
   ],
@@ -84,5 +85,5 @@
     "Call tts-service": { "main": [[{ "node": "Build absolute URL", "type": "main", "index": 0 }]] },
     "Build absolute URL": { "main": [[{ "node": "Save voice_url", "type": "main", "index": 0 }]] }
   },
-  "settings": { "availableInMCP": true }
+  "settings": { "availableInMCP": true, "errorWorkflow": "jwPN2t0n4jo5nXet" }
 }
