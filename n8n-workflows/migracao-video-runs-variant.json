@@ -1,0 +1,30 @@
+{
+  "name": "Postador - Migração video_runs variant (descartável)",
+  "nodes": [
+    {
+      "parameters": { "rule": { "interval": [{ "field": "days", "daysInterval": 365 }] } },
+      "id": "trigger-1",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "ALTER TABLE postador.video_runs\n  ADD COLUMN IF NOT EXISTS script_long_text TEXT,\n  ADD COLUMN IF NOT EXISTS script_short_text TEXT,\n  ADD COLUMN IF NOT EXISTS voice_long_url TEXT,\n  ADD COLUMN IF NOT EXISTS voice_short_url TEXT,\n  ADD COLUMN IF NOT EXISTS captions_long_json JSONB,\n  ADD COLUMN IF NOT EXISTS captions_short_json JSONB,\n  ADD COLUMN IF NOT EXISTS assets_long_json JSONB,\n  ADD COLUMN IF NOT EXISTS assets_short_json JSONB,\n  ADD COLUMN IF NOT EXISTS music_long_url TEXT,\n  ADD COLUMN IF NOT EXISTS music_short_url TEXT,\n  ADD COLUMN IF NOT EXISTS clip_keywords TEXT[];"
+      },
+      "id": "pg-ddl",
+      "name": "Run DDL",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [460, 300],
+      "alwaysOutputData": true,
+      "credentials": { "postgres": { "id": "UwnVbemNZVcThSbB", "name": "Postgres postador" } }
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": { "main": [[{ "node": "Run DDL", "type": "main", "index": 0 }]] }
+  },
+  "settings": {}
+}
