@@ -1,0 +1,163 @@
+{
+  "name": "Postador - Render",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "trigger-1",
+      "name": "Execute Workflow Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT CASE WHEN $2 = 'long' THEN vr.voice_long_url ELSE vr.voice_short_url END AS voice_url, CASE WHEN $2 = 'long' THEN vr.captions_long_json ELSE vr.captions_short_json END AS captions_json, CASE WHEN $2 = 'long' THEN vr.assets_long_json ELSE vr.assets_short_json END AS assets_json, CASE WHEN $2 = 'long' THEN vr.music_long_url ELSE vr.music_short_url END AS music_url, vr.topic, n.mascot_image_url FROM postador.video_runs vr JOIN postador.niches n ON n.id = vr.niche_id WHERE vr.id = $1;",
+        "additionalFields": { "queryParams": "run_id,variant" }
+      },
+      "id": "pg-read-run",
+      "name": "Read run and niche",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [460, 300],
+      "credentials": { "postgres": { "id": "__PG_CRED_ID__", "name": "Postgres postador" } }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const run = $json;\nconst clips = typeof run.assets_json === 'string' ? JSON.parse(run.assets_json) : run.assets_json;\nconst captions = typeof run.captions_json === 'string' ? JSON.parse(run.captions_json) : run.captions_json;\nconst variant = $node[\"Execute Workflow Trigger\"].json.variant;\nreturn [{ json: { jobId: 'run-' + $node[\"Execute Workflow Trigger\"].json.run_id + '-' + variant, clips, voiceUrl: run.voice_url, musicUrl: run.music_url, captions, mascotImageUrl: run.mascot_image_url, topic: run.topic, run_id: $node[\"Execute Workflow Trigger\"].json.run_id, variant } }];"
+      },
+      "id": "code-build-render-job",
+      "name": "Build render job",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://hdc4uggio012w03s44k1f4e3.137.131.180.11.sslip.io/render",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [{ "name": "Authorization", "value": "=Bearer {{$env.RENDER_AUTH_TOKEN}}" }]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { jobId: $json.jobId, clips: $json.clips, voiceUrl: $json.voiceUrl, musicUrl: $json.musicUrl, captions: $json.captions } }}",
+        "options": { "timeout": 600000 }
+      },
+      "id": "http-render",
+      "name": "Call render-service /render",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const RENDER_BASE = 'http://hdc4uggio012w03s44k1f4e3.137.131.180.11.sslip.io';\nconst src = $node[\"Build render job\"].json;\nreturn [{ json: { render16x9: RENDER_BASE + $json.files['16:9'], render9x16: RENDER_BASE + $json.files['9:16'], jobId: src.jobId, mascotImageUrl: src.mascotImageUrl, topic: src.topic, run_id: src.run_id, variant: src.variant } }];"
+      },
+      "id": "code-build-render-urls",
+      "name": "Build absolute render URLs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "loose" },
+          "conditions": [
+            {
+              "id": "cond-is-long",
+              "leftValue": "={{$json.variant}}",
+              "rightValue": "long",
+              "operator": { "type": "string", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-is-long",
+      "name": "Is long variant?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1340, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://hdc4uggio012w03s44k1f4e3.137.131.180.11.sslip.io/thumbnail",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [{ "name": "Authorization", "value": "=Bearer {{$env.RENDER_AUTH_TOKEN}}" }]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { jobId: $json.jobId, mascotImageUrl: $json.mascotImageUrl, text: $json.topic } }}",
+        "options": {}
+      },
+      "id": "http-thumbnail",
+      "name": "Call render-service /thumbnail",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1560, 200]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const RENDER_BASE = 'http://hdc4uggio012w03s44k1f4e3.137.131.180.11.sslip.io';\nconst src = $node[\"Build absolute render URLs\"].json;\nreturn [{ json: { thumbnail_url: RENDER_BASE + $json.url, render16x9: src.render16x9, render9x16: src.render9x16, run_id: src.run_id } }];"
+      },
+      "id": "code-build-thumb-url",
+      "name": "Build absolute thumbnail URL",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1780, 200]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE postador.video_runs SET render_16x9_url = $1, thumbnail_url = $2, current_step = 'render', updated_at = now() WHERE id = $3;",
+        "additionalFields": { "queryParams": "render16x9,thumbnail_url,run_id" }
+      },
+      "id": "pg-save-render-long",
+      "name": "Save render results (long, with thumbnail)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [2000, 200],
+      "alwaysOutputData": true,
+      "credentials": { "postgres": { "id": "__PG_CRED_ID__", "name": "Postgres postador" } }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE postador.video_runs SET render_9x16_url = $1, current_step = 'render', updated_at = now() WHERE id = $2;",
+        "additionalFields": { "queryParams": "render9x16,run_id" }
+      },
+      "id": "pg-save-render-short",
+      "name": "Save render results (short)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [1560, 420],
+      "alwaysOutputData": true,
+      "credentials": { "postgres": { "id": "__PG_CRED_ID__", "name": "Postgres postador" } }
+    }
+  ],
+  "connections": {
+    "Execute Workflow Trigger": { "main": [[{ "node": "Read run and niche", "type": "main", "index": 0 }]] },
+    "Read run and niche": { "main": [[{ "node": "Build render job", "type": "main", "index": 0 }]] },
+    "Build render job": { "main": [[{ "node": "Call render-service /render", "type": "main", "index": 0 }]] },
+    "Call render-service /render": { "main": [[{ "node": "Build absolute render URLs", "type": "main", "index": 0 }]] },
+    "Build absolute render URLs": { "main": [[{ "node": "Is long variant?", "type": "main", "index": 0 }]] },
+    "Is long variant?": {
+      "main": [
+        [{ "node": "Call render-service /thumbnail", "type": "main", "index": 0 }],
+        [{ "node": "Save render results (short)", "type": "main", "index": 0 }]
+      ]
+    },
+    "Call render-service /thumbnail": { "main": [[{ "node": "Build absolute thumbnail URL", "type": "main", "index": 0 }]] },
+    "Build absolute thumbnail URL": { "main": [[{ "node": "Save render results (long, with thumbnail)", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "availableInMCP": true, "callerPolicy": "workflowsFromSameOwner", "errorWorkflow": "jwPN2t0n4jo5nXet" }
+}
