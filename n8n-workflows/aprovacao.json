@@ -12,7 +12,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT vr.id AS run_id, vr.topic, vr.script_text, vr.thumbnail_url, vr.render_16x9_url, n.approval_mode FROM postador.video_runs vr JOIN postador.niches n ON n.id = vr.niche_id WHERE vr.id = $1;",
+        "query": "SELECT vr.id AS run_id, vr.topic, vr.script_long_text, vr.thumbnail_url, vr.render_16x9_url, vr.render_9x16_url, n.approval_mode FROM postador.video_runs vr JOIN postador.niches n ON n.id = vr.niche_id WHERE vr.id = $1;",
         "additionalFields": { "queryParams": "run_id" }
       },
       "id": "pg-read-run",
@@ -66,7 +66,7 @@
         "operation": "sendAndWait",
         "chatId": "={{$env.TELEGRAM_CHAT_ID}}",
         "subject": "=Aprovação de vídeo — {{$node[\"Read run and niche for approval\"].json.topic}}",
-        "message": "=Tema: {{$node[\"Read run and niche for approval\"].json.topic}}\n\nTrecho do roteiro:\n{{$node[\"Read run and niche for approval\"].json.script_text.slice(0,300)}}...\n\nVídeo (16:9): {{$node[\"Read run and niche for approval\"].json.render_16x9_url}}",
+        "message": "=Tema: {{$node[\"Read run and niche for approval\"].json.topic}}\n\nTrecho do roteiro (long):\n{{$node[\"Read run and niche for approval\"].json.script_long_text.slice(0,300)}}...\n\nVídeo (16:9): {{$node[\"Read run and niche for approval\"].json.render_16x9_url}}\nVídeo (Shorts 9:16): {{$node[\"Read run and niche for approval\"].json.render_9x16_url}}",
         "responseType": "approval",
         "approvalOptions": {
           "values": { "approvalType": "double", "approveLabel": "Aprovar", "disapproveLabel": "Rejeitar" }
@@ -104,6 +104,7 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 1,
       "position": [1560, 200],
+      "alwaysOutputData": true,
       "credentials": { "postgres": { "id": "__PG_CRED_ID__", "name": "Postgres postador" } }
     },
     {
@@ -117,6 +118,7 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 1,
       "position": [900, 420],
+      "alwaysOutputData": true,
       "credentials": { "postgres": { "id": "__PG_CRED_ID__", "name": "Postgres postador" } }
     }
   ],
@@ -133,5 +135,5 @@
     "Send approval request": { "main": [[{ "node": "Flatten decision", "type": "main", "index": 0 }]] },
     "Flatten decision": { "main": [[{ "node": "Save manual decision", "type": "main", "index": 0 }]] }
   },
-  "settings": { "availableInMCP": true }
+  "settings": { "availableInMCP": true, "errorWorkflow": "jwPN2t0n4jo5nXet" }
 }
