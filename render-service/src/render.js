@@ -37,11 +37,25 @@ async function renderJob(job, outDir, execFileImpl = execFile) {
   return results;
 }
 
+// Probes an image's pixel width via ffprobe. Used to size the thumbnail's
+// word-wrap/fontsize to the mascot image's real width instead of a hardcoded
+// canvasWidth.
+function getImageWidth(filePath, execFileImpl = execFile) {
+  const args = ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width', '-of', 'default=noprint_wrappers=1:nokey=1', filePath];
+  return new Promise((resolve, reject) => {
+    execFileImpl('ffprobe', args, { maxBuffer: 1024 * 1024 * 50 }, (error, stdout, stderr) => {
+      if (error) return reject(new Error(`ffprobe failed: ${stderr || error.message}`));
+      resolve(parseInt(stdout, 10));
+    });
+  });
+}
+
 async function renderThumbnail(job, outDir, execFileImpl = execFile) {
   const outPath = path.join(outDir, `${job.jobId}-thumb.jpg`);
-  const args = buildThumbnailArgs(job.mascotPath, job.text, outPath);
+  const canvasWidth = await getImageWidth(job.mascotPath, execFileImpl);
+  const args = buildThumbnailArgs(job.mascotPath, job.text, outPath, canvasWidth);
   await runFfmpeg(args, execFileImpl);
   return outPath;
 }
 
-module.exports = { runFfmpeg, getMediaDuration, renderJob, renderThumbnail };
+module.exports = { runFfmpeg, getMediaDuration, getImageWidth, renderJob, renderThumbnail };

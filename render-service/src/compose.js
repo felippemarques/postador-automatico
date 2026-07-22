@@ -99,10 +99,50 @@ function escapeDrawtext(text) {
     .replace(/%/g, '\\%');
 }
 
-function buildThumbnailArgs(mascotPath, text, outPath) {
-  const escaped = escapeDrawtext(text);
-  const drawtext = `drawtext=text='${escaped}':fontsize=64:fontcolor=white:borderw=4:bordercolor=black:x=(w-text_w)/2:y=h-160:box=1:boxcolor=black@0.5:boxborderw=20`;
+const THUMBNAIL_MAX_FONTSIZE = 64;
+const THUMBNAIL_MIN_FONTSIZE = 32;
+const THUMBNAIL_MAX_LINES = 2;
+const THUMBNAIL_CHAR_WIDTH_RATIO = 0.6;
+const THUMBNAIL_MARGIN_RATIO = 0.9;
+const THUMBNAIL_DEFAULT_CANVAS_WIDTH = 500;
+
+// Estimates how many characters fit per line at a given fontsize/canvasWidth
+// (no real font metrics available at this layer — a fixed average-glyph-width
+// ratio is close enough for the default ffmpeg drawtext font) and greedily
+// word-wraps the text to that width.
+function wrapTextToWidth(text, fontsize, canvasWidth) {
+  const maxCharsPerLine = Math.max(1, Math.floor((canvasWidth * THUMBNAIL_MARGIN_RATIO) / (fontsize * THUMBNAIL_CHAR_WIDTH_RATIO)));
+  const words = String(text).split(/\s+/).filter(Boolean);
+  const lines = [];
+  let current = '';
+  for (const word of words) {
+    const candidate = current ? `${current} ${word}` : word;
+    if (candidate.length > maxCharsPerLine && current) {
+      lines.push(current);
+      current = word;
+    } else {
+      current = candidate;
+    }
+  }
+  if (current) lines.push(current);
+  return lines;
+}
+
+// Shrinks fontsize (in steps of 8, down to THUMBNAIL_MIN_FONTSIZE) until the
+// wrapped text fits within THUMBNAIL_MAX_LINES for the given canvasWidth.
+function fitThumbnailText(text, canvasWidth) {
+  for (let fontsize = THUMBNAIL_MAX_FONTSIZE; fontsize > THUMBNAIL_MIN_FONTSIZE; fontsize -= 8) {
+    const lines = wrapTextToWidth(text, fontsize, canvasWidth);
+    if (lines.length <= THUMBNAIL_MAX_LINES) return { lines, fontsize };
+  }
+  return { lines: wrapTextToWidth(text, THUMBNAIL_MIN_FONTSIZE, canvasWidth), fontsize: THUMBNAIL_MIN_FONTSIZE };
+}
+
+function buildThumbnailArgs(mascotPath, text, outPath, canvasWidth = THUMBNAIL_DEFAULT_CANVAS_WIDTH) {
+  const { lines, fontsize } = fitThumbnailText(text, canvasWidth);
+  const drawtextLines = lines.map(escapeDrawtext).join('\n');
+  const drawtext = `drawtext=text='${drawtextLines}':fontsize=${fontsize}:fontcolor=white:borderw=4:bordercolor=black:x=(w-text_w)/2:y=h-160:line_spacing=10:box=1:boxcolor=black@0.5:boxborderw=20`;
   return ['-i', mascotPath, '-vf', drawtext, '-frames:v', '1', '-q:v', '2', '-y', outPath];
 }
 
-module.exports = { buildFfmpegArgs, buildSrt, writeSrt, srtTimestamp, FORMATS, escapeDrawtext, buildThumbnailArgs };
+module.exports = { buildFfmpegArgs, buildSrt, writeSrt, srtTimestamp, FORMATS, escapeDrawtext, buildThumbnailArgs, wrapTextToWidth, fitThumbnailText };

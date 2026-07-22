@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { buildFfmpegArgs, srtTimestamp, buildSrt, escapeDrawtext, buildThumbnailArgs } = require('../compose');
+const { buildFfmpegArgs, srtTimestamp, buildSrt, escapeDrawtext, buildThumbnailArgs, wrapTextToWidth, fitThumbnailText } = require('../compose');
 
 test('srtTimestamp formats seconds as SRT timestamp', () => {
   assert.equal(srtTimestamp(0), '00:00:00,000');
@@ -121,15 +121,49 @@ test('escapeDrawtext escapes percent signs', () => {
   assert.equal(escapeDrawtext('100% done'), '100\\% done');
 });
 
-test('buildThumbnailArgs builds a single-frame ffmpeg overlay command', () => {
-  const args = buildThumbnailArgs('mascot.png', 'Missão Super Ouvidos', 'out.jpg');
+test('buildThumbnailArgs builds a single-frame ffmpeg overlay command for a short title (fits on one line)', () => {
+  const args = buildThumbnailArgs('mascot.png', 'Oi Herói', 'out.jpg');
   assert.deepEqual(args.slice(0, 2), ['-i', 'mascot.png']);
   const filterIndex = args.indexOf('-vf');
   assert.ok(filterIndex !== -1);
-  assert.match(args[filterIndex + 1], /drawtext=text='Miss.*Super Ouvidos'/);
-  // NOTE: deviates from plan's literal `slice(-4)` check. The output path must be
-  // the final ffmpeg CLI argument for a valid command (options after it would be
-  // orphaned), matching the existing `buildFfmpegArgs` convention in this file, so
-  // the tail window is widened to include it.
+  assert.match(args[filterIndex + 1], /drawtext=text='Oi Heró.*':fontsize=64/);
   assert.deepEqual(args.slice(-6), ['-frames:v', '1', '-q:v', '2', '-y', 'out.jpg']);
+});
+
+test('wrapTextToWidth wraps words into lines that fit maxCharsPerLine for the given fontsize/canvasWidth', () => {
+  const lines = wrapTextToWidth('Missão Super Ouvidos Encantados', 64, 500);
+  assert.ok(lines.length >= 2);
+  const maxCharsPerLine = Math.floor((500 * 0.9) / (64 * 0.6));
+  lines.forEach((line) => assert.ok(line.length <= maxCharsPerLine || !line.includes(' ')));
+});
+
+test('fitThumbnailText shrinks fontsize until the wrapped text fits within THUMBNAIL_MAX_LINES', () => {
+  const { lines, fontsize } = fitThumbnailText('Missão Super Ouvidos', 500);
+  assert.ok(fontsize < 64);
+  assert.ok(lines.length <= 2);
+});
+
+test('fitThumbnailText never returns more lines for a longer canvasWidth than a shorter one', () => {
+  const narrow = fitThumbnailText('Missão Guarda Brinquedos Encantados', 300);
+  const wide = fitThumbnailText('Missão Guarda Brinquedos Encantados', 900);
+  assert.ok(wide.fontsize >= narrow.fontsize);
+});
+
+test('buildThumbnailArgs wraps a long title into 2+ lines and/or shrinks fontsize so no line overflows canvasWidth', () => {
+  const canvasWidth = 500;
+  const args = buildThumbnailArgs('mascot.png', 'Missão Guarda Brinquedos Encantados', 'out.jpg', canvasWidth);
+  const filter = args[args.indexOf('-vf') + 1];
+  const fontsizeMatch = filter.match(/fontsize=(\d+)/);
+  const fontsize = Number(fontsizeMatch[1]);
+  const textMatch = filter.match(/text='([\s\S]*?)':fontsize=/);
+  const lines = textMatch[1].split('\n');
+  assert.ok(lines.length >= 2 || fontsize < 64);
+  const maxCharsPerLine = Math.floor((canvasWidth * 0.9) / (fontsize * 0.6));
+  lines.forEach((line) => assert.ok(line.length <= maxCharsPerLine + 1, `line "${line}" (${line.length} chars) exceeds estimated width at fontsize ${fontsize}`));
+});
+
+test('buildThumbnailArgs falls back to THUMBNAIL_DEFAULT_CANVAS_WIDTH when canvasWidth is omitted', () => {
+  const withDefault = buildThumbnailArgs('mascot.png', 'Missão Super Ouvidos', 'out.jpg');
+  const withExplicit500 = buildThumbnailArgs('mascot.png', 'Missão Super Ouvidos', 'out.jpg', 500);
+  assert.equal(withDefault[withDefault.indexOf('-vf') + 1], withExplicit500[withExplicit500.indexOf('-vf') + 1]);
 });
