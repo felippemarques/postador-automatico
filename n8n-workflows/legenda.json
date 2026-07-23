@@ -12,8 +12,8 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT voice_url FROM postador.video_runs WHERE id = $1;",
-        "additionalFields": { "queryParams": "run_id" }
+        "query": "SELECT CASE WHEN $2 = 'long' THEN voice_long_url ELSE voice_short_url END AS voice_url FROM postador.video_runs WHERE id = $1;",
+        "additionalFields": { "queryParams": "run_id,variant" }
       },
       "id": "pg-read-voice-url",
       "name": "Read voice_url",
@@ -44,7 +44,7 @@
     {
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "return [{ json: { captions: JSON.stringify($json.segments), run_id: $node[\"Execute Workflow Trigger\"].json.run_id } }];"
+        "jsCode": "return [{ json: { captions: JSON.stringify($json.segments), run_id: $node[\"Execute Workflow Trigger\"].json.run_id, variant: $node[\"Execute Workflow Trigger\"].json.variant } }];"
       },
       "id": "code-build-captions",
       "name": "Build captions params",
@@ -55,14 +55,15 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "UPDATE postador.video_runs SET captions_json = $1, current_step = 'legenda', updated_at = now() WHERE id = $2;",
-        "additionalFields": { "queryParams": "captions,run_id" }
+        "query": "UPDATE postador.video_runs SET captions_long_json = CASE WHEN $3 = 'long' THEN $1::jsonb ELSE captions_long_json END, captions_short_json = CASE WHEN $3 = 'short' THEN $1::jsonb ELSE captions_short_json END, current_step = 'legenda', updated_at = now() WHERE id = $2;",
+        "additionalFields": { "queryParams": "captions,run_id,variant" }
       },
       "id": "pg-save-captions",
       "name": "Save captions",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 1,
       "position": [1120, 300],
+      "alwaysOutputData": true,
       "credentials": { "postgres": { "id": "__PG_CRED_ID__", "name": "Postgres postador" } }
     }
   ],
@@ -72,5 +73,5 @@
     "Call whisper-service": { "main": [[{ "node": "Build captions params", "type": "main", "index": 0 }]] },
     "Build captions params": { "main": [[{ "node": "Save captions", "type": "main", "index": 0 }]] }
   },
-  "settings": { "availableInMCP": true }
+  "settings": { "availableInMCP": true, "errorWorkflow": "jwPN2t0n4jo5nXet" }
 }

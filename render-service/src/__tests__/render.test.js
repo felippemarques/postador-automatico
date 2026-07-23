@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { renderJob, runFfmpeg, renderThumbnail, getMediaDuration } = require('../render');
+const { renderJob, runFfmpeg, renderThumbnail, getMediaDuration, getImageWidth } = require('../render');
 
 test('renderJob probes voice duration via ffprobe once, then calls ffmpeg twice (16:9 and 9:16)', async () => {
   const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'render-'));
@@ -54,14 +54,29 @@ test('runFfmpeg rejects with stderr message on failure', async () => {
   await assert.rejects(() => runFfmpeg(['-i', 'x'], fakeExecFile), /ffmpeg error output/);
 });
 
-test('renderThumbnail calls ffmpeg once and returns the output path', async () => {
+test('renderThumbnail probes mascot width via ffprobe, then calls ffmpeg once', async () => {
   const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'thumb-'));
   const calls = [];
   const fakeExecFile = (cmd, args, opts, cb) => {
-    calls.push(args);
+    calls.push({ cmd, args });
+    if (cmd === 'ffprobe') return cb(null, '500\n', '');
     cb(null, '', '');
   };
   const outPath = await renderThumbnail({ jobId: 'job1', mascotPath: 'mascot.png', text: 'Missão Teste' }, outDir, fakeExecFile);
-  assert.equal(calls.length, 1);
+  assert.equal(calls.length, 2);
+  assert.equal(calls[0].cmd, 'ffprobe');
+  assert.ok(calls[0].args.includes('mascot.png'));
+  assert.equal(calls[1].cmd, 'ffmpeg');
   assert.equal(outPath, path.join(outDir, 'job1-thumb.jpg'));
+});
+
+test('getImageWidth resolves to the parsed integer width from ffprobe stdout', async () => {
+  const fakeExecFile = (cmd, args, opts, cb) => cb(null, '500\n', '');
+  const width = await getImageWidth('mascot.png', fakeExecFile);
+  assert.equal(width, 500);
+});
+
+test('getImageWidth rejects with stderr message on failure', async () => {
+  const fakeExecFile = (cmd, args, opts, cb) => cb(new Error('boom'), '', 'ffprobe error output');
+  await assert.rejects(() => getImageWidth('mascot.png', fakeExecFile), /ffprobe error output/);
 });

@@ -12,7 +12,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT id AS niche_id, prompt_template, voice_id FROM postador.niches WHERE id = $1;",
+        "query": "SELECT id AS niche_id, prompt_template, voice_id, clip_keywords FROM postador.niches WHERE id = $1;",
         "additionalFields": { "queryParams": "niche_id" }
       },
       "id": "pg-read-niche",
@@ -72,7 +72,7 @@
     {
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "const raw = $json.choices[0].message.content;\nconst cleaned = raw.trim().replace(/^```json/i, '').replace(/^```/, '').replace(/```$/, '').trim();\nconst parsed = JSON.parse(cleaned);\nreturn [{ json: { topic: parsed.topic, script: parsed.script, run_id: $node[\"Execute Workflow Trigger\"].json.run_id, niche_id: $node[\"Execute Workflow Trigger\"].json.niche_id } }];"
+        "jsCode": "const raw = $json.choices[0].message.content;\nconst cleaned = raw.trim().replace(/^```json/i, '').replace(/^```/, '').replace(/```$/, '').trim();\nconst parsed = JSON.parse(cleaned);\nconst niche = $node[\"Read niche\"].json;\nconst clipKeywords = Array.isArray(parsed.clip_keywords) && parsed.clip_keywords.length > 0 ? parsed.clip_keywords : (niche.clip_keywords || []);\nreturn [{ json: { topic: parsed.topic, scriptLong: parsed.script_long, scriptShort: parsed.script_short, clipKeywords, run_id: $node[\"Execute Workflow Trigger\"].json.run_id, niche_id: $node[\"Execute Workflow Trigger\"].json.niche_id } }];"
       },
       "id": "code-parse-llm",
       "name": "Parse LLM JSON",
@@ -83,14 +83,15 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "UPDATE postador.video_runs SET script_text = $1, topic = $2, current_step = 'roteiro', updated_at = now() WHERE id = $3;",
-        "additionalFields": { "queryParams": "script,topic,run_id" }
+        "query": "UPDATE postador.video_runs SET script_long_text = $1, script_short_text = $2, clip_keywords = $3, topic = $4, current_step = 'roteiro', updated_at = now() WHERE id = $5;",
+        "additionalFields": { "queryParams": "scriptLong,scriptShort,clipKeywords,topic,run_id" }
       },
       "id": "pg-save-script",
       "name": "Save script",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 1,
       "position": [1560, 220],
+      "alwaysOutputData": true,
       "credentials": { "postgres": { "id": "__PG_CRED_ID__", "name": "Postgres postador" } }
     },
     {
@@ -104,6 +105,7 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 1,
       "position": [1560, 400],
+      "alwaysOutputData": true,
       "credentials": { "postgres": { "id": "__PG_CRED_ID__", "name": "Postgres postador" } }
     }
   ],
@@ -115,5 +117,5 @@
     "Call OpenRouter": { "main": [[{ "node": "Parse LLM JSON", "type": "main", "index": 0 }]] },
     "Parse LLM JSON": { "main": [[{ "node": "Save script", "type": "main", "index": 0 }, { "node": "Insert topics_used", "type": "main", "index": 0 }]] }
   },
-  "settings": { "availableInMCP": true }
+  "settings": { "availableInMCP": true, "errorWorkflow": "jwPN2t0n4jo5nXet" }
 }

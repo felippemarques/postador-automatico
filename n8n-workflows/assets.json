@@ -1,0 +1,97 @@
+{
+  "name": "Postador - Assets",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "trigger-1",
+      "name": "Execute Workflow Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT COALESCE(vr.clip_keywords, n.clip_keywords) AS clip_keywords FROM postador.video_runs vr JOIN postador.niches n ON n.id = vr.niche_id WHERE vr.id = $1;",
+        "additionalFields": { "queryParams": "run_id" }
+      },
+      "id": "pg-read-keywords",
+      "name": "Read episode clip_keywords",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [460, 300],
+      "credentials": { "postgres": { "id": "__PG_CRED_ID__", "name": "Postgres postador" } }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const keywords = $json.clip_keywords || [];\nreturn keywords.map(keyword => ({ json: { keyword } }));"
+      },
+      "id": "code-split-keywords",
+      "name": "Split keywords",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "url": "=https://api.pexels.com/videos/search?query={{ encodeURIComponent($json.keyword) }}&per_page=2&orientation=landscape",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [{ "name": "Authorization", "value": "={{$env.PEXELS_API_KEY}}" }]
+        },
+        "options": {}
+      },
+      "id": "http-pexels",
+      "name": "Search Pexels",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [900, 300],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const clips = [];\nfor (const item of $input.all()) {\n  if (item.json.error) continue;\n  const videos = item.json.videos || [];\n  for (const video of videos) {\n    const files = video.video_files || [];\n    const best = files.find(f => f.quality === 'hd' && f.file_type === 'video/mp4') || files.find(f => f.file_type === 'video/mp4') || files[0];\n    if (best) clips.push({ url: best.link });\n  }\n}\nif (clips.length === 0) {\n  const pixabayKey = $env.PIXABAY_API_KEY;\n  const splitKeywordItems = $(\"Split keywords\").all();\n  const fallbackKeyword = (splitKeywordItems[0] && splitKeywordItems[0].json && splitKeywordItems[0].json.keyword) || 'kids';\n  try {\n    const res = await this.helpers.httpRequest({\n      method: 'GET',\n      url: `https://pixabay.com/api/videos/?key=${pixabayKey}&q=${encodeURIComponent(fallbackKeyword)}&per_page=6`,\n      json: true,\n    });\n    for (const hit of (res.hits || [])) {\n      const v = (hit.videos && (hit.videos.medium || hit.videos.large || hit.videos.small)) || null;\n      if (v && v.url) clips.push({ url: v.url });\n    }\n  } catch (err) {\n    // Pixabay fallback failed too; leave clips as-is (graceful degradation)\n  }\n}\nreturn [{ json: { clips } }];"
+      },
+      "id": "code-flatten-clips",
+      "name": "Flatten clip candidates",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const MUSIC_TRACKS = [\n  'http://hdc4uggio012w03s44k1f4e3.137.131.180.11.sslip.io/files/music/track1.mp3',\n  'http://hdc4uggio012w03s44k1f4e3.137.131.180.11.sslip.io/files/music/track2.mp3',\n  'http://hdc4uggio012w03s44k1f4e3.137.131.180.11.sslip.io/files/music/track3.mp3',\n  'http://hdc4uggio012w03s44k1f4e3.137.131.180.11.sslip.io/files/music/track4.mp3',\n  'http://hdc4uggio012w03s44k1f4e3.137.131.180.11.sslip.io/files/music/track5.mp3'\n];\nconst musicUrl = MUSIC_TRACKS[Math.floor(Math.random() * MUSIC_TRACKS.length)];\nreturn [{ json: { clipsJson: JSON.stringify($json.clips), musicUrl, run_id: $node[\"Execute Workflow Trigger\"].json.run_id, variant: $node[\"Execute Workflow Trigger\"].json.variant } }];"
+      },
+      "id": "code-pick-music",
+      "name": "Pick music",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1340, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE postador.video_runs SET assets_long_json = CASE WHEN $4 = 'long' THEN $1::jsonb ELSE assets_long_json END, assets_short_json = CASE WHEN $4 = 'short' THEN $1::jsonb ELSE assets_short_json END, music_long_url = CASE WHEN $4 = 'long' THEN $2 ELSE music_long_url END, music_short_url = CASE WHEN $4 = 'short' THEN $2 ELSE music_short_url END, current_step = 'assets', updated_at = now() WHERE id = $3;",
+        "additionalFields": { "queryParams": "clipsJson,musicUrl,run_id,variant" }
+      },
+      "id": "pg-save-assets",
+      "name": "Save assets",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [1560, 300],
+      "alwaysOutputData": true,
+      "credentials": { "postgres": { "id": "__PG_CRED_ID__", "name": "Postgres postador" } }
+    }
+  ],
+  "connections": {
+    "Execute Workflow Trigger": { "main": [[{ "node": "Read episode clip_keywords", "type": "main", "index": 0 }]] },
+    "Read episode clip_keywords": { "main": [[{ "node": "Split keywords", "type": "main", "index": 0 }]] },
+    "Split keywords": { "main": [[{ "node": "Search Pexels", "type": "main", "index": 0 }]] },
+    "Search Pexels": { "main": [[{ "node": "Flatten clip candidates", "type": "main", "index": 0 }]] },
+    "Flatten clip candidates": { "main": [[{ "node": "Pick music", "type": "main", "index": 0 }]] },
+    "Pick music": { "main": [[{ "node": "Save assets", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "availableInMCP": true, "errorWorkflow": "jwPN2t0n4jo5nXet" }
+}
